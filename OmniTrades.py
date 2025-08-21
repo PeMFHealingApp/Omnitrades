@@ -57,11 +57,13 @@ def get_historical_data():
         start_date = (datetime.now() - pd.Timedelta(days=DATA_LIMIT)).strftime("%Y-%m-%d")
         url = f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=usd&from={int(datetime.strptime(start_date, '%Y-%m-%d').timestamp())}&to={int(datetime.strptime(end_date, '%Y-%m-%d').timestamp())}"
         response = requests.get(url).json()
+        if 'prices' not in response:
+            raise ValueError("CoinGecko response missing 'prices' key")
         prices = response['prices']
         data = pd.DataFrame(prices, columns=['timestamp', 'close'])
-        data['open'] = data['close'].shift(1)
-        data['high'] = data['close'].rolling(window=2).max()
-        data['low'] = data['close'].rolling(window=2).min()
+        data['open'] = data['close'].shift(1).fillna(data['close'])
+        data['high'] = data['close'].rolling(window=2).max().fillna(data['close'])
+        data['low'] = data['close'].rolling(window=2).min().fillna(data['close'])
         data['volume'] = 0  # CoinGecko doesn't provide volume, set to 0
         data = data.dropna()
         return data
@@ -82,15 +84,16 @@ def get_current_price():
 def prepare_scaled_data():
     data = get_historical_data()
     if data.empty:
-        return None
+        print("No historical data available, using fallback.")
+        return None, None
     scaler = MinMaxScaler()
     scaled_data = scaler.fit_transform(data['close'].values.reshape(-1, 1))
     return scaled_data, scaler
 
 # Train LSTM model
 scaled_data, scaler = prepare_scaled_data()
-if scaled_data is None:
-    print("No data for training. Exiting.")
+if scaled_data is None or scaler is None:
+    print("Failed to prepare data for training. Exiting.")
     exit()
 
 def create_dataset(dataset, time_step):
@@ -112,8 +115,8 @@ model.fit(X_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, verbose=1)
 
 # Predict next price with updated data
 def predict_next_price():
-    scaled_data, _ = prepare_scaled_data()
-    if scaled_data is None or len(scaled_data) < TIME_STEP:
+    scaled_data, scaler = prepare_scaled_data()
+    if scaled_data is None or scaler is None or len(scaled_data) < TIME_STEP:
         return 0.0
     last_data = scaled_data[-TIME_STEP:]
     pred = model.predict(np.reshape(last_data, (1, TIME_STEP, 1)), verbose=0)
