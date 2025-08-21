@@ -53,7 +53,6 @@ trade_client = Client(os.getenv('BINANCE_TESTNET_API_KEY'), os.getenv('BINANCE_T
 # Fetch historical data from CoinGecko
 def get_historical_data():
     try:
-        # CoinGecko API endpoint for historical data (daily)
         end_date = datetime.now().strftime("%Y-%m-%d")
         start_date = (datetime.now() - pd.Timedelta(days=DATA_LIMIT)).strftime("%Y-%m-%d")
         url = f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=usd&from={int(datetime.strptime(start_date, '%Y-%m-%d').timestamp())}&to={int(datetime.strptime(end_date, '%Y-%m-%d').timestamp())}"
@@ -63,7 +62,7 @@ def get_historical_data():
         data['open'] = data['close'].shift(1)
         data['high'] = data['close'].rolling(window=2).max()
         data['low'] = data['close'].rolling(window=2).min()
-        data['volume'] = 0  # CoinGecko doesn't provide volume in this endpoint, set to 0
+        data['volume'] = 0  # CoinGecko doesn't provide volume, set to 0
         data = data.dropna()
         return data
     except Exception as e:
@@ -79,10 +78,73 @@ def get_current_price():
     except:
         return 0.0
 
+# Prepare scaled data for prediction
+def prepare_scaled_data():
+    data = get_historical_data()
+    if data.empty:
+        return None
+    scaler = MinMaxScaler()
+    scaled_data = scaler.fit_transform(data['close'].values.reshape(-1, 1))
+    return scaled_data, scaler
+
+# Train LSTM model
+scaled_data, scaler = prepare_scaled_data()
+if scaled_data is None:
+    print("No data for training. Exiting.")
+    exit()
+
+def create_dataset(dataset, time_step):
+    X, Y = [], []
+    for i in range(len(dataset) - time_step - 1):
+        X.append(dataset[i:(i + time_step), 0])
+        Y.append(dataset[i + time_step, 0])
+    return np.array(X), np.array(Y)
+
+X_train, y_train = create_dataset(scaled_data, TIME_STEP)
+X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], 1))
+
+model = Sequential()
+model.add(LSTM(LSTM_UNITS, return_sequences=True, input_shape=(TIME_STEP, 1)))
+model.add(LSTM(LSTM_UNITS))
+model.add(Dense(1))
+model.compile(optimizer='adam', loss='mean_squared_error')
+model.fit(X_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, verbose=1)
+
+# Predict next price with updated data
 def predict_next_price():
+    scaled_data, _ = prepare_scaled_data()
+    if scaled_data is None or len(scaled_data) < TIME_STEP:
+        return 0.0
     last_data = scaled_data[-TIME_STEP:]
     pred = model.predict(np.reshape(last_data, (1, TIME_STEP, 1)), verbose=0)
     return scaler.inverse_transform(pred)[0][0]
+
+# Sentiment analysis
+def get_gemini_sentiment(news_texts):
+    try:
+        model = genai.GenerativeModel(GEMINI_MODEL)
+        prompt = f"Analyze these for {SYMBOL} sentiment (0-1, bullish): {'; '.join(news_texts)}"
+        response = model.generate_content(prompt)
+        return float(response.text.strip())
+    except:
+        return 0.5
+
+def get_openai_sentiment(news_texts):
+    try:
+        prompt = f"Analyze these news for {SYMBOL} sentiment (0-1, bullish): {'; '.join(news_texts)}"
+        response = openai.ChatCompletion.create(model=OPENAI_MODEL, messages=[{"role": "user", "content": prompt}])
+        return float(response.choices[0].message['content'].strip())
+    except:
+        return 0.5
+
+# Fetch news
+def get_recent_news():
+    try:
+        response = requests.get(NEWS_SOURCE)
+        news = response.json().get('data', [])[:NEWS_LIMIT]
+        return [item.get('title', '') for item in news]
+    except:
+        return ["No news."]
 
 # Metrics
 def calculate_metrics(trade_log, current_price, initial_capital):
