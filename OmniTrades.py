@@ -130,18 +130,51 @@ def predict_next_price():
 # Metrics
 def calculate_metrics(trade_log, current_price, initial_capital):
     if not trade_log:
-        return {'daily_earnings': 0.0, 'total_pnl': 0.0, 'win_rate': 0.0, 'num_trades': 0, 'avg_trade_profit': 0.0, 'sharpe_ratio': 0.0, 'max_drawdown': 0.0, 'portfolio_value': initial_capital}
+        return {
+            'daily_earnings': 0.0,
+            'total_pnl': 0.0,
+            'win_rate': 0.0,
+            'num_trades': 0,
+            'avg_trade_profit': 0.0,
+            'sharpe_ratio': 0.0,
+            'max_drawdown': 0.0,
+            'portfolio_value': initial_capital
+        }
     df = pd.DataFrame(trade_log)
     df['time'] = pd.to_datetime(df['time'])
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     daily_trades = df[df['time'] >= today]
-    daily_earnings = sum((trade['price'] - t['buy_price']) * t['quantity'] * (1 - 2 * FEE_RATE) for _, trade in daily_trades.iterrows() if trade['action'] == 'sell' and t := next((t for t in [{'buy_price': r['price'], 'quantity': r['quantity']} for r in daily_trades if r['action'] == 'buy'], None) for _ in range(len(daily_trades) - 1, -1, -1) if t['buy_price']))
-    total_pnl = sum((trade['price'] - t['buy_price']) * t['quantity'] * (1 - 2 * FEE_RATE) for _, trade in df.iterrows() if trade['action'] == 'sell' and t := next((t for t in [{'buy_price': r['price'], 'quantity': r['quantity']} for r in df if r['action'] == 'buy'], None) for _ in range(len(df) - 1, -1, -1) if t['buy_price']))
-    profits = [(trade['price'] - t['buy_price']) * t['quantity'] for _, trade in df.iterrows() if trade['action'] == 'sell' and t := next((t for t in [{'buy_price': r['price'], 'quantity': r['quantity']} for r in df if r['action'] == 'buy'], None) for _ in range(len(df) - 1, -1, -1) if t['buy_price'])]
+
+    # Daily earnings
+    daily_earnings = 0.0
+    buy_trades = daily_trades[daily_trades['action'] == 'buy'].iloc[::-1].to_dict('records')
+    sell_trades = daily_trades[daily_trades['action'] == 'sell'].to_dict('records')
+    for sell in sell_trades:
+        for buy in buy_trades:
+            if buy['time'] < sell['time']:  # Pair based on time
+                profit = (sell['price'] - buy['price']) * buy['quantity'] * (1 - 2 * FEE_RATE)
+                daily_earnings += profit
+                buy_trades.remove(buy)
+                break
+
+    # Total P&L
+    total_pnl = 0.0
+    all_buy_trades = df[df['action'] == 'buy'].iloc[::-1].to_dict('records')
+    all_sell_trades = df[df['action'] == 'sell'].to_dict('records')
+    for sell in all_sell_trades:
+        for buy in all_buy_trades:
+            if buy['time'] < sell['time']:
+                profit = (sell['price'] - buy['price']) * buy['quantity'] * (1 - 2 * FEE_RATE)
+                total_pnl += profit
+                all_buy_trades.remove(buy)
+                break
+
+    # Win rate, etc.
+    profits = [(sell['price'] - buy['price']) * buy['quantity'] for sell in all_sell_trades for buy in all_buy_trades if buy['time'] < sell['time'] for _ in [0]]
     win_rate = len([p for p in profits if p > 0]) / len(profits) if profits else 0.0
     num_trades = len(df[df['action'].isin(['buy', 'sell'])])
     avg_trade_profit = np.mean(profits) if profits else 0.0
-    daily_returns = df.groupby(df['time'].dt.date).apply(lambda x: sum((row['price'] - t['buy_price']) * t['quantity'] * (1 - 2 * FEE_RATE) for _, row in x.iterrows() if row['action'] == 'sell' and t := next((t for t in [{'buy_price': r['price'], 'quantity': r['quantity']} for r in x if r['action'] == 'buy'], None) for _ in range(len(x) - 1, -1, -1) if t['buy_price'])))
+    daily_returns = df.groupby(df['time'].dt.date).apply(lambda x: sum((row['price'] - t['buy_price']) * t['quantity'] * (1 - 2 * FEE_RATE) for _, row in x.iterrows() if row['action'] == 'sell' and t := next((t for t in x[x['action'] == 'buy'].to_dict('records'), None) if t['time'] < row['time'])))
     sharpe_ratio = np.mean(daily_returns) / np.std(daily_returns) if len(daily_returns) > 1 and np.std(daily_returns) != 0 else 0.0
     portfolio_values = [INITIAL_CAPITAL]
     current_cash = INITIAL_CAPITAL
@@ -156,7 +189,17 @@ def calculate_metrics(trade_log, current_price, initial_capital):
         portfolio_values.append(current_cash + sum(t['quantity'] * current_price for t in trades_open))
     max_drawdown = max(0, max(portfolio_values) - min(portfolio_values))
     portfolio_value = current_cash + sum(t['quantity'] * current_price for t in trades_open)
-    return {'daily_earnings': daily_earnings, 'total_pnl': total_pnl, 'win_rate': win_rate, 'num_trades': num_trades, 'avg_trade_profit': avg_trade_profit, 'sharpe_ratio': sharpe_ratio, 'max_drawdown': max_drawdown, 'portfolio_value': portfolio_value}
+
+    return {
+        'daily_earnings': daily_earnings,
+        'total_pnl': total_pnl,
+        'win_rate': win_rate,
+        'num_trades': num_trades,
+        'avg_trade_profit': avg_trade_profit,
+        'sharpe_ratio': sharpe_ratio,
+        'max_drawdown': max_drawdown,
+        'portfolio_value': portfolio_value
+    }
 
 # Trading loop
 trade_log = []
