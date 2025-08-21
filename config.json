@@ -1,0 +1,38 @@
+{
+  "data": {
+    "symbol": "BTCUSDT",
+    "interval": "1d",
+    "start_date": "1 Jan 2022",
+    "data_limit": 1500
+  },
+  "model": {
+    "time_step": 60,
+    "lstm_units": 50,
+    "epochs": 10,
+    "batch_size": 64
+  },
+  "trading": {
+    "quantity": 0.001,
+    "price_threshold": 0.01,
+    "sentiment_buy_threshold": 0.7,
+    "sentiment_sell_threshold": 0.3,
+    "trade_interval": 3600,
+    "initial_capital": 100000,
+    "fee_rate": 0.001,
+    "metrics_interval": 86400,
+    "risk_per_trade": 0.01,
+    "stop_loss": 0.05,
+    "max_trades_per_day": 10
+  },
+  "sentiment": {
+    "news_source": "https://api.coingecko.com/api/v3/news",
+    "news_limit": 5,
+    "gemini_model": "gemini-1.5-flash",
+    "openai_model": "gpt-4o-mini"
+  },
+  "general": {
+    "log_file": "trades.csv",
+    "daily_metrics_file": "daily_metrics.csv",
+    "testnet": true
+  }
+}
