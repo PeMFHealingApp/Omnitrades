@@ -21,6 +21,9 @@
          th { background-color: #3a3a3a; }
          h1, h2 { color: #fff; }
          canvas { background-color: #2c2c2c; }
+         .status-error { color: #ff4444; }
+         .status-active { color: #00cc00; }
+         .status-idle { color: #cccc00; }
        </style>
      </head>
      <body>
@@ -33,6 +36,7 @@
            <p id="dataSource">Data Source: CoinGecko (Real-time, updated ${new Date().toLocaleTimeString()})</p>
            <p id="lastTrade">Last Trade: None</p>
            <p id="sentiment">Sentiment Score: Loading...</p>
+           <p id="workflowStatus">Workflow Status: Loading...</p>
          </div>
          <div class="card">
            <h2>Performance Metrics</h2>
@@ -85,6 +89,25 @@
                return { date, daily_earnings: parseFloat(daily_earnings) || 0, total_pnl: parseFloat(total_pnl) || 0, win_rate: parseFloat(win_rate) || 0, num_trades: parseInt(num_trades) || 0, avg_trade_profit: parseFloat(avg_trade_profit) || 0, sharpe_ratio: parseFloat(sharpe_ratio) || 0, max_drawdown: parseFloat(max_drawdown) || 0, portfolio_value: parseFloat(portfolio_value) || 0 };
              });
 
+             // Workflow status
+             const workflowResponse = await fetch('https://api.github.com/repos/PeMFHealingApp/Omnitrades/actions/runs?per_page=1&status=completed', {
+               headers: { 'Accept': 'application/vnd.github.v3+json' }
+             });
+             const workflowData = await workflowResponse.json();
+             const latestRun = workflowData.workflow_runs[0];
+             let statusText = 'IDLE: No Recent Run';
+             let statusClass = 'status-idle';
+             if (latestRun) {
+               if (latestRun.conclusion === 'success') {
+                 statusText = 'ACTIVE: Paper Trading';
+                 statusClass = 'status-active';
+               } else {
+                 statusText = `ERROR: ${latestRun.message || 'Unknown error'}`;
+                 statusClass = 'status-error';
+               }
+             }
+             document.getElementById('workflowStatus').innerHTML = `<span class="${statusClass}">${statusText}</span>`;
+
              const lastTrade = data.length ? data[data.length - 1] : { action: 'None', price: 0, sentiment: 0 };
              const currentPrice = await get_current_price();
              document.getElementById('currentCrypto').textContent = `Trading: BTC`;
@@ -126,6 +149,7 @@
              });
            } catch (error) {
              console.error('Error fetching data:', error);
+             document.getElementById('workflowStatus').innerHTML = `<span class="status-error">ERROR: Failed to load data (${error.message})</span>`;
            }
          }
 
