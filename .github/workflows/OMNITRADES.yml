@@ -20,8 +20,6 @@ jobs:
         env:
           BINANCE_TESTNET_API_KEY: ${{ secrets.BINANCE_TESTNET_API_KEY }}
           BINANCE_TESTNET_API_SECRET: ${{ secrets.BINANCE_TESTNET_API_SECRET }}
-          BINANCE_LIVE_API_KEY: ${{ secrets.BINANCE_LIVE_API_KEY }}
-          BINANCE_LIVE_API_SECRET: ${{ secrets.BINANCE_LIVE_API_SECRET }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: python OmniTrades.py
