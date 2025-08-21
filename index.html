@@ -55,6 +55,7 @@
                </thead>
                <tbody></tbody>
              </table>
+             <p id="gainLossNote" class="info">Note: 404 indicates no metrics data yet (e.g., no trades). Check workflow logs.</p>
            </div>
          </div>
          <div class="card">
@@ -81,8 +82,12 @@
                return { time, price: parseFloat(price) || 0, predicted: parseFloat(predicted) || 0, sentiment: parseFloat(sentiment) || 0, action, quantity: parseFloat(quantity) || 0 };
              });
 
-             const metricsResponse = await fetch('https://raw.githubusercontent.com/PeMFHealingApp/Omnitrades/main/daily_metrics.csv');
-             const metricsText = await metricsResponse.text();
+             let metricsResponse = await fetch('https://raw.githubusercontent.com/PeMFHealingApp/Omnitrades/main/daily_metrics.csv');
+             let metricsText = await metricsResponse.text();
+             if (metricsResponse.status === 404) {
+               document.getElementById('gainLossNote').textContent = 'Note: 404 - No metrics data yet (e.g., no trades). Check workflow logs.';
+               metricsText = 'date,daily_earnings,total_pnl,win_rate,num_trades,avg_trade_profit,sharpe_ratio,max_drawdown,portfolio_value\n';
+             }
              const metricsLines = metricsText.split('\n').filter(line => line.trim());
              const metrics = metricsLines.map(line => {
                const [date, daily_earnings, total_pnl, win_rate, num_trades, avg_trade_profit, sharpe_ratio, max_drawdown, portfolio_value] = line.split(',');
@@ -125,11 +130,17 @@
              // Daily Gain/Loss Table
              const tableBody = document.querySelector('#gainLossTable tbody');
              tableBody.innerHTML = '';
-             metrics.forEach(metric => {
+             if (metricsResponse.status === 404) {
                const row = document.createElement('tr');
-               row.innerHTML = `<td>${metric.date}</td><td>$${metric.daily_earnings.toFixed(2)}</td>`;
+               row.innerHTML = `<td>Initial</td><td>$0.00</td>`;
                tableBody.appendChild(row);
-             });
+             } else {
+               metrics.forEach(metric => {
+                 const row = document.createElement('tr');
+                 row.innerHTML = `<td>${metric.date}</td><td>$${metric.daily_earnings.toFixed(2)}</td>`;
+                 tableBody.appendChild(row);
+               });
+             }
 
              const ctx = document.getElementById('earningsChart').getContext('2d');
              new Chart(ctx, {
