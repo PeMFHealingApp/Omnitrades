@@ -48,77 +48,34 @@ TESTNET = config['general']['testnet']
 genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
-live_client = Client(os.getenv('BINANCE_LIVE_API_KEY'), os.getenv('BINANCE_LIVE_API_SECRET'))
 trade_client = Client(os.getenv('BINANCE_TESTNET_API_KEY'), os.getenv('BINANCE_TESTNET_API_SECRET'), testnet=TESTNET)
 
-# Fetch historical data
+# Fetch historical data from CoinGecko
 def get_historical_data():
     try:
-        klines = live_client.get_historical_klines(SYMBOL, INTERVAL, START_DATE, limit=DATA_LIMIT)
-        data = pd.DataFrame(klines, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_av', 'trades', 'tb_base_av', 'tb_quote_av', 'ignore'])
-        data['close'] = pd.to_numeric(data['close'])
+        # CoinGecko API endpoint for historical data (daily)
+        end_date = datetime.now().strftime("%Y-%m-%d")
+        start_date = (datetime.now() - pd.Timedelta(days=DATA_LIMIT)).strftime("%Y-%m-%d")
+        url = f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=usd&from={int(datetime.strptime(start_date, '%Y-%m-%d').timestamp())}&to={int(datetime.strptime(end_date, '%Y-%m-%d').timestamp())}"
+        response = requests.get(url).json()
+        prices = response['prices']
+        data = pd.DataFrame(prices, columns=['timestamp', 'close'])
+        data['open'] = data['close'].shift(1)
+        data['high'] = data['close'].rolling(window=2).max()
+        data['low'] = data['close'].rolling(window=2).min()
+        data['volume'] = 0  # CoinGecko doesn't provide volume in this endpoint, set to 0
+        data = data.dropna()
         return data
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error fetching CoinGecko historical data: {e}")
         return pd.DataFrame()
 
-# Train LSTM
-data = get_historical_data()
-if data.empty:
-    print("No data. Exiting.")
-    exit()
-
-scaler = MinMaxScaler()
-scaled_data = scaler.fit_transform(data['close'].values.reshape(-1,1))
-
-def create_dataset(dataset, time_step):
-    X, Y = [], []
-    for i in range(len(dataset)-time_step-1):
-        X.append(dataset[i:(i+time_step), 0])
-        Y.append(dataset[i + time_step, 0])
-    return np.array(X), np.array(Y)
-
-X_train, y_train = create_dataset(scaled_data, TIME_STEP)
-X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], 1))
-
-model = Sequential()
-model.add(LSTM(LSTM_UNITS, return_sequences=True, input_shape=(TIME_STEP, 1)))
-model.add(LSTM(LSTM_UNITS))
-model.add(Dense(1))
-model.compile(optimizer='adam', loss='mean_squared_error')
-model.fit(X_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, verbose=1)
-
-# Fetch news
-def get_recent_news():
-    try:
-        response = requests.get(NEWS_SOURCE)
-        news = response.json().get('data', [])[:NEWS_LIMIT]
-        return [item.get('title', '') for item in news]
-    except:
-        return ["No news."]
-
-# Sentiment analysis
-def get_gemini_sentiment(news_texts):
-    try:
-        model = genai.GenerativeModel(GEMINI_MODEL)
-        prompt = f"Analyze these for {SYMBOL} sentiment (0-1, bullish): {'; '.join(news_texts)}"
-        response = model.generate_content(prompt)
-        return float(response.text.strip())
-    except:
-        return 0.5
-
-def get_openai_sentiment(news_texts):
-    try:
-        prompt = f"Analyze these news for {SYMBOL} sentiment (0-1, bullish): {'; '.join(news_texts)}"
-        response = openai.ChatCompletion.create(model=OPENAI_MODEL, messages=[{"role": "user", "content": prompt}])
-        return float(response.choices[0].message['content'].strip())
-    except:
-        return 0.5
-
-# Price and prediction
+# Fetch current price from CoinGecko
 def get_current_price():
     try:
-        return float(live_client.get_symbol_ticker(symbol=SYMBOL)['price'])
+        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+        response = requests.get(url).json()
+        return float(response['bitcoin']['usd'])
     except:
         return 0.0
 
