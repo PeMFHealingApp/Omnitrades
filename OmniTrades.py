@@ -170,12 +170,23 @@ def calculate_metrics(trade_log, current_price, initial_capital):
                 break
 
     # Win rate, etc.
-    profits = [(sell['price'] - buy['price']) * buy['quantity'] for sell in all_sell_trades for buy in all_buy_trades if buy['time'] < sell['time'] for _ in [0]]
+    profits = []
+    for sell in all_sell_trades:
+        for buy in all_buy_trades:
+            if buy['time'] < sell['time']:
+                profit = (sell['price'] - buy['price']) * buy['quantity']
+                profits.append(profit)
+                all_buy_trades.remove(buy)
+                break
     win_rate = len([p for p in profits if p > 0]) / len(profits) if profits else 0.0
     num_trades = len(df[df['action'].isin(['buy', 'sell'])])
     avg_trade_profit = np.mean(profits) if profits else 0.0
-    daily_returns = df.groupby(df['time'].dt.date).apply(lambda x: sum((row['price'] - t['buy_price']) * t['quantity'] * (1 - 2 * FEE_RATE) for _, row in x.iterrows() if row['action'] == 'sell' and t := next((t for t in x[x['action'] == 'buy'].to_dict('records'), None) if t['time'] < row['time'])))
+
+    # Daily returns (simplified)
+    daily_returns = df.groupby(df['time'].dt.date).apply(lambda x: sum((row['price'] - x[x['action'] == 'buy']['price'].iloc[0]) * x[x['action'] == 'buy']['quantity'].iloc[0] * (1 - 2 * FEE_RATE) if x['action'].iloc[0] == 'buy' and len(x) > 1 else 0 for _, row in x.iterrows()))
     sharpe_ratio = np.mean(daily_returns) / np.std(daily_returns) if len(daily_returns) > 1 and np.std(daily_returns) != 0 else 0.0
+
+    # Portfolio and drawdown
     portfolio_values = [INITIAL_CAPITAL]
     current_cash = INITIAL_CAPITAL
     trades_open = []
