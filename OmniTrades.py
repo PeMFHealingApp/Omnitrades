@@ -26,9 +26,9 @@ LSTM_UNITS = config['model']['lstm_units']
 EPOCHS = config['model']['epochs']
 BATCH_SIZE = config['model']['batch_size']
 QUANTITY_BASE = config['trading']['quantity']
-PRICE_THRESHOLD = config['trading']['price_threshold']
-SENTIMENT_BUY = config['trading']['sentiment_buy_threshold']
-SENTIMENT_SELL = config['trading']['sentiment_sell_threshold']
+PRICE_THRESHOLD = config['trading'].get('price_threshold', 0.01)  # Default if not set
+SENTIMENT_BUY_THRESHOLD = config['trading'].get('sentiment_buy_threshold', 0.7)
+SENTIMENT_SELL_THRESHOLD = config['trading'].get('sentiment_sell_threshold', 0.3)
 TRADE_INTERVAL = config['trading']['trade_interval']
 INITIAL_CAPITAL = config['trading']['initial_capital']
 FEE_RATE = config['trading']['fee_rate']
@@ -234,6 +234,17 @@ def calculate_metrics(trade_log, current_price, initial_capital):
         'portfolio_value': portfolio_value
     }
 
+# Auto-correction logic
+def adjust_parameters(daily_earnings):
+    global PRICE_THRESHOLD, SENTIMENT_BUY_THRESHOLD, SENTIMENT_SELL_THRESHOLD
+    MIN_EARNINGS = 1000.0
+    if daily_earnings < MIN_EARNINGS:
+        # Increase sensitivity to buy/sell signals
+        PRICE_THRESHOLD = max(0.005, PRICE_THRESHOLD * 0.9)  # Reduce threshold by 10%, min 0.5%
+        SENTIMENT_BUY_THRESHOLD = max(0.6, SENTIMENT_BUY_THRESHOLD - 0.05)  # Lower buy threshold, min 0.6
+        SENTIMENT_SELL_THRESHOLD = min(0.4, SENTIMENT_SELL_THRESHOLD + 0.05)  # Raise sell threshold, max 0.4
+        print(f"Auto-correction applied: Price Threshold={PRICE_THRESHOLD}, Buy Threshold={SENTIMENT_BUY_THRESHOLD}, Sell Threshold={SENTIMENT_SELL_THRESHOLD}")
+
 # Trading loop
 trade_log = []
 last_metrics_time = time.time()
@@ -241,6 +252,18 @@ current_capital = INITIAL_CAPITAL
 daily_trade_count = 0
 last_day = datetime.now().date()
 open_positions = []
+last_daily_earnings = 0.0
+
+# Initialize empty log files if they don't exist
+import os
+if not os.path.exists(LOG_FILE):
+    pd.DataFrame(columns=['time', 'price', 'predicted', 'sentiment', 'action', 'quantity']).to_csv(LOG_FILE, index=False)
+    print(f"Initialized empty {LOG_FILE}")
+if not os.path.exists(DAILY_METRICS_FILE):
+    pd.DataFrame(columns=['date', 'daily_earnings', 'total_pnl', 'win_rate', 'num_trades', 'avg_trade_profit', 'sharpe_ratio', 'max_drawdown', 'portfolio_value']).to_csv(DAILY_METRICS_FILE, index=False)
+    print(f"Initialized empty {DAILY_METRICS_FILE}")
+
+print("Starting trading loop with capital:", current_capital)
 
 while True:
     current_price = get_current_price()
@@ -253,6 +276,7 @@ while True:
     if current_day != last_day:
         daily_trade_count = 0
         last_day = current_day
+        adjust_parameters(last_daily_earnings)  # Adjust parameters at day start
 
     if daily_trade_count >= MAX_TRADES_PER_DAY:
         print("Max trades reached. Waiting...")
@@ -280,14 +304,14 @@ while True:
 
     # Trading logic
     action = "hold"
-    if predicted_price > current_price * (1 + PRICE_THRESHOLD) and sentiment_score > SENTIMENT_BUY:
+    if predicted_price > current_price * (1 + PRICE_THRESHOLD) and sentiment_score > SENTIMENT_BUY_THRESHOLD:
         order = trade_client.order_market_buy(symbol=SYMBOL, quantity=quantity)
         action = "buy"
         current_capital -= current_price * quantity * (1 + FEE_RATE)
         open_positions.append({'buy_price': current_price, 'quantity': quantity})
         daily_trade_count += 1
         print(f"Buy {quantity} at {current_price}, Pred: {predicted_price}, Sentiment: {sentiment_score}")
-    elif predicted_price < current_price * (1 - PRICE_THRESHOLD) and sentiment_score < SENTIMENT_SELL:
+    elif predicted_price < current_price * (1 - PRICE_THRESHOLD) and sentiment_score < SENTIMENT_SELL_THRESHOLD:
         order = trade_client.order_market_sell(symbol=SYMBOL, quantity=quantity)
         action = "sell"
         current_capital += current_price * quantity * (1 - FEE_RATE)
@@ -297,15 +321,18 @@ while True:
     # Log trade
     trade_log.append({'time': time.ctime(), 'price': current_price, 'predicted': predicted_price, 'sentiment': sentiment_score, 'action': action, 'quantity': quantity})
     pd.DataFrame(trade_log).to_csv(LOG_FILE, index=False)
+    print(f"Trade saved: {action} {quantity} at {current_price}")
 
     # Metrics
     if time.time() - last_metrics_time >= METRICS_INTERVAL:
         metrics = calculate_metrics(trade_log, current_price, INITIAL_CAPITAL)
+        last_daily_earnings = metrics['daily_earnings']  # Update last daily earnings
         print(f"\nOMNITRADES Metrics ({datetime.now().date()}):")
         for k, v in metrics.items():
             print(f"{k.replace('_', ' ').title()}: ${v:.2f}" if 'price' in k or k in ['daily_earnings', 'total_pnl', 'avg_trade_profit', 'max_drawdown', 'portfolio_value'] else f"{k.replace('_', ' ').title()}: {v:.2f}" if k == 'sharpe_ratio' else f"{k.replace('_', ' ').title()}: {v:.0f}%" if k == 'win_rate' else f"{k.replace('_', ' ').title()}: {v}")
         daily_metrics = [{'date': datetime.now().date(), **metrics}]
         pd.DataFrame(daily_metrics).to_csv(DAILY_METRICS_FILE, mode='a', header=not os.path.exists(DAILY_METRICS_FILE), index=False)
+        print(f"Metrics saved for {datetime.now().date()} with earnings: {metrics['daily_earnings']}")
         last_metrics_time = time.time()
 
     time.sleep(TRADE_INTERVAL)
