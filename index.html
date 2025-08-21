@@ -55,7 +55,7 @@
                </thead>
                <tbody></tbody>
              </table>
-             <p id="gainLossNote" class="info">Note: 404 indicates no trade/metrics data yet. Check <a href="https://github.com/PeMFHealingApp/Omnitrades/actions" target="_blank">workflow logs</a> for details.</p>
+             <p id="gainLossNote" class="info">Note: 404 indicates no trade/metrics data. Run the workflow or check <a href="https://github.com/PeMFHealingApp/Omnitrades/actions" target="_blank">logs</a> for issues (e.g., no trades, API errors).</p>
            </div>
          </div>
          <div class="card">
@@ -75,6 +75,7 @@
          async function fetchData() {
            try {
              const tradeResponse = await fetch('https://raw.githubusercontent.com/PeMFHealingApp/Omnitrades/main/trades.csv');
+             if (!tradeResponse.ok) throw new Error(`Trade data fetch failed: ${tradeResponse.status} ${tradeResponse.statusText}`);
              const tradeText = await tradeResponse.text();
              const tradeLines = tradeText.split('\n').filter(line => line.trim());
              const data = tradeLines.map(line => {
@@ -83,9 +84,10 @@
              });
 
              let metricsResponse = await fetch('https://raw.githubusercontent.com/PeMFHealingApp/Omnitrades/main/daily_metrics.csv');
+             if (!metricsResponse.ok) throw new Error(`Metrics data fetch failed: ${metricsResponse.status} ${metricsResponse.statusText}`);
              let metricsText = await metricsResponse.text();
              if (metricsResponse.status === 404) {
-               document.getElementById('gainLossNote').textContent = 'Note: 404 - No trade/metrics data yet. Check <a href="https://github.com/PeMFHealingApp/Omnitrades/actions" target="_blank">workflow logs</a> for details.';
+               document.getElementById('gainLossNote').textContent = 'Note: 404 indicates no trade/metrics data. Run the workflow or check <a href="https://github.com/PeMFHealingApp/Omnitrades/actions" target="_blank">logs</a> for issues (e.g., no trades, API errors).';
                metricsText = 'date,daily_earnings,total_pnl,win_rate,num_trades,avg_trade_profit,sharpe_ratio,max_drawdown,portfolio_value\n';
              }
              const metricsLines = metricsText.split('\n').filter(line => line.trim());
@@ -130,7 +132,7 @@
              // Daily Gain/Loss Table
              const tableBody = document.querySelector('#gainLossTable tbody');
              tableBody.innerHTML = '';
-             if (metricsResponse.status === 404) {
+             if (metricsResponse.status === 404 || !metrics.length) {
                const row = document.createElement('tr');
                row.innerHTML = `<td>Initial</td><td>$0.00</td>`;
                tableBody.appendChild(row);
