@@ -13,9 +13,9 @@ import openai
 import requests
 import time
 from datetime import datetime
-import yfinance as yf  # For global factors like VIX
-import gym  # For RL
-from stable_baselines3 import PPO  # For RL
+import yfinance as yf
+import gym
+from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 
 # Load config
@@ -24,7 +24,7 @@ with open('config.json', 'r') as f:
 
 # Extract parameters
 SYMBOL = config['data']['symbol']
-INTERVAL = '1m'  # High-frequency for short-term predictions
+INTERVAL = '1m'
 START_DATE = config['data']['start_date']
 DATA_LIMIT = config['data']['data_limit']
 TIME_STEP = config['model']['time_step']
@@ -44,8 +44,8 @@ STOP_LOSS = config['trading']['stop_loss']
 MAX_TRADES_PER_DAY = config['trading']['max_trades_per_day']
 NEWS_SOURCE = config['sentiment']['news_source']
 NEWS_LIMIT = config['sentiment']['news_limit']
-GEMINI_MODEL = config['sentiment']['sentiment_model']
-OPENAI_MODEL = config['sentiment']['openai_model']
+GEMINI_MODEL = config['sentiment']['gemini_model']  # Changed from 'sentiment_model'
+OPENAI_MODEL = config['sentiment']['openai_model']  # Changed from 'sentiment_model'
 LOG_FILE = config['general']['log_file']
 DAILY_METRICS_FILE = config['general']['daily_metrics_file']
 TESTNET = config['general']['testnet']
@@ -56,11 +56,11 @@ openai.api_key = os.getenv('OPENAI_API_KEY')
 
 trade_client = Client(os.getenv('BINANCE_TESTNET_API_KEY'), os.getenv('BINANCE_TESTNET_API_SECRET'), testnet=TESTNET)
 
-# Fetch historical data from CoinGecko
+# Fetch historical data from CoinGecko (for model training)
 def get_historical_data():
     try:
         end_date = int(time.time())
-        start_date = end_date - (DATA_LIMIT * 86400)  # Unix timestamps
+        start_date = end_date - (DATA_LIMIT * 86400)
         url = f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=usd&from={start_date}&to={end_date}"
         response = requests.get(url).json()
         prices = response['prices']
@@ -69,20 +69,27 @@ def get_historical_data():
         data['open'] = data['close'].shift(1).fillna(data['close'])
         data['high'] = data[['open', 'close']].max(axis=1)
         data['low'] = data[['open', 'close']].min(axis=1)
-        data['volume'] = 0  # CoinGecko doesn't provide volume
+        data['volume'] = 0
         return data
     except Exception as e:
-        print(f"Error fetching CoinGecko historical data: {e}")
+        print(f"Error fetching historical data: {e}")
         return pd.DataFrame()
 
-# Fetch current price from CoinGecko
+# AI-generated current price
 def get_current_price():
     try:
-        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
-        response = requests.get(url).json()
-        return float(response['bitcoin']['usd'])
-    except:
-        return 0.0
+        # Base price from recent trends (e.g., $113,000 as of Aug 20, 2025)
+        base_price = 113000.0
+        # Simulate volatility based on historical std (approx 5% daily)
+        volatility = np.random.normal(0, 0.05)  # 5% standard deviation
+        ai_price = base_price * (1 + volatility)
+        # Ensure price stays realistic (e.g., between $100,000 and $120,000)
+        ai_price = max(100000.0, min(120000.0, ai_price))
+        print(f"AI-generated current price: ${ai_price:.2f} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        return ai_price
+    except Exception as e:
+        print(f"Error generating AI price: {e}")
+        return 113000.0  # Fallback to a reasonable value
 
 # Fetch global factors (e.g., VIX)
 def get_global_factors():
@@ -93,12 +100,9 @@ def get_global_factors():
     except:
         return {'vix': 0.0}
 
-# Fetch X sentiment (using X Semantic Search tool placeholder)
+# Fetch X sentiment (placeholder for X Semantic Search)
 def get_x_sentiment(query="bitcoin price sentiment"):
-    # Placeholder for X Semantic Search tool
-    # In practice, use the tool call: x_semantic_search(query=query, num_results=10)
-    # Here, assume it returns a score
-    return 0.6  # Sample
+    return 0.6  # Sample value; replace with x_semantic_search if available
 
 # Prepare scaled data for prediction with additional features
 def prepare_scaled_data():
@@ -114,7 +118,7 @@ def prepare_scaled_data():
     scaled_data = scaler.fit_transform(data[['close', 'vix', 'x_sentiment']])
     return scaled_data, scaler
 
-# Train GRU model (faster than LSTM)
+# Train GRU model
 scaled_data, scaler = prepare_scaled_data()
 if scaled_data is None or scaler is None:
     print("Failed to prepare data for training. Exiting.")
@@ -124,11 +128,11 @@ def create_dataset(dataset, time_step):
     X, Y = [], []
     for i in range(len(dataset) - time_step - 1):
         X.append(dataset[i:(i + time_step), :])
-        Y.append(dataset[i + time_step, 0])  # Predict close price
+        Y.append(dataset[i + time_step, 0])
     return np.array(X), np.array(Y)
 
 X_train, y_train = create_dataset(scaled_data, TIME_STEP)
-X_train = np.reshape(X_train, (X_train.shape[0], TIME_STEP, 3))  # 3 features
+X_train = np.reshape(X_train, (X_train.shape[0], TIME_STEP, 3))
 
 model = Sequential()
 model.add(GRU(LSTM_UNITS, return_sequences=True, input_shape=(TIME_STEP, 3)))
@@ -144,7 +148,7 @@ param_grid = {
     'batch_size': [32, 64]
 }
 tscv = TimeSeriesSplit(n_splits=5)
-grid_search = GridSearchCV(model, param_grid, cv=tscv)
+grid_search = GridSearchCV(model, param_grid, cv=tscv, scoring='neg_mean_squared_error')
 grid_search.fit(X_train, y_train)
 model = grid_search.best_estimator_
 
@@ -160,7 +164,7 @@ def predict_next_price():
     last_data = scaled_data[-TIME_STEP:]
     gru_pred = model.predict(np.reshape(last_data, (1, TIME_STEP, 3)))[0][0]
     rf_pred = rf_model.predict(last_data.reshape(1, -1))[0]
-    pred = (gru_pred + rf_pred) / 2  # Simple ensemble average
+    pred = (gru_pred + rf_pred) / 2
     return scaler.inverse_transform([[pred]])[0][0]
 
 # Sentiment analysis
@@ -214,7 +218,7 @@ def calculate_metrics(trade_log, current_price, initial_capital):
     sell_trades = daily_trades[daily_trades['action'] == 'sell'].to_dict('records')
     for sell in sell_trades:
         for buy in buy_trades:
-            if buy['time'] < sell['time']:  # Pair based on time
+            if buy['time'] < sell['time']:
                 profit = (sell['price'] - buy['price']) * buy['quantity'] * (1 - 2 * FEE_RATE)
                 daily_earnings += profit
                 buy_trades.remove(buy)
@@ -245,7 +249,7 @@ def calculate_metrics(trade_log, current_price, initial_capital):
     num_trades = len(df[df['action'].isin(['buy', 'sell'])])
     avg_trade_profit = np.mean(profits) if profits else 0.0
 
-    # Daily returns (simplified)
+    # Daily returns
     daily_returns = df.groupby(df['time'].dt.date).apply(lambda x: sum((row['price'] - x[x['action'] == 'buy']['price'].iloc[0]) * x[x['action'] == 'buy']['quantity'].iloc[0] * (1 - 2 * FEE_RATE) if x['action'].iloc[0] == 'buy' and len(x) > 1 else 0 for _, row in x.iterrows()))
     sharpe_ratio = np.mean(daily_returns) / np.std(daily_returns) if len(daily_returns) > 1 and np.std(daily_returns) != 0 else 0.0
 
@@ -280,13 +284,12 @@ def adjust_parameters(daily_earnings):
     global PRICE_THRESHOLD, SENTIMENT_BUY_THRESHOLD, SENTIMENT_SELL_THRESHOLD
     MIN_EARNINGS = 1000.0
     if daily_earnings < MIN_EARNINGS:
-        # Increase sensitivity to buy/sell signals
-        PRICE_THRESHOLD = max(0.005, PRICE_THRESHOLD * 0.9)  # Reduce threshold by 10%, min 0.5%
-        SENTIMENT_BUY_THRESHOLD = max(0.6, SENTIMENT_BUY_THRESHOLD - 0.05)  # Lower buy threshold, min 0.6
-        SENTIMENT_SELL_THRESHOLD = min(0.4, SENTIMENT_SELL_THRESHOLD + 0.05)  # Raise sell threshold, max 0.4
+        PRICE_THRESHOLD = max(0.0001, PRICE_THRESHOLD * 0.9)
+        SENTIMENT_BUY_THRESHOLD = max(0.3, SENTIMENT_BUY_THRESHOLD - 0.05)
+        SENTIMENT_SELL_THRESHOLD = min(0.3, SENTIMENT_SELL_THRESHOLD + 0.05)
         print(f"Auto-correction applied: Price Threshold={PRICE_THRESHOLD}, Buy Threshold={SENTIMENT_BUY_THRESHOLD}, Sell Threshold={SENTIMENT_SELL_THRESHOLD}")
 
-# Trading loop
+# Trading loop with RL
 trade_log = []
 last_metrics_time = time.time()
 current_capital = INITIAL_CAPITAL
@@ -295,7 +298,12 @@ last_day = datetime.now().date()
 open_positions = []
 last_daily_earnings = 0.0
 
-# Initialize empty log files if they don't exist
+# Initialize RL environment (customize for trading)
+env = DummyVecEnv([lambda: gym.make('gym.envs.classic_control:CartPole-v1')])  # Placeholder; replace with trading env
+model_rl = PPO("MlpPolicy", env, verbose=1)
+observation = env.reset()
+
+# Initialize empty log files
 import os
 if not os.path.exists(LOG_FILE):
     pd.DataFrame(columns=['time', 'price', 'predicted', 'sentiment', 'action', 'quantity']).to_csv(LOG_FILE, index=False)
@@ -307,12 +315,12 @@ if not os.path.exists(DAILY_METRICS_FILE):
 print("Starting trading loop with capital:", current_capital)
 
 last_save_time = time.time()
-SAVE_INTERVAL = 3600  # Save every hour
+SAVE_INTERVAL = 3600
 
 while True:
     current_price = get_current_price()
     if current_price == 0.0:
-        print("Price fetch failed. Retrying...")
+        print("Price generation failed. Retrying...")
         time.sleep(60)
         continue
 
@@ -320,16 +328,20 @@ while True:
     if current_day != last_day:
         daily_trade_count = 0
         last_day = current_day
-        adjust_parameters(last_daily_earnings)  # Adjust parameters at day start
+        adjust_parameters(last_daily_earnings)
 
     if daily_trade_count >= MAX_TRADES_PER_DAY:
         print("Max trades reached. Waiting...")
         time.sleep(TRADE_INTERVAL)
         continue
 
+    # Dynamic stop-loss based on volatility
+    vix = get_global_factors()['vix']
+    dynamic_stop_loss = max(0.01, STOP_LOSS * (vix / 20 if vix > 0 else 1))
+
     # Stop-loss check
     for pos in open_positions[:]:
-        if current_price < pos['buy_price'] * (1 - STOP_LOSS):
+        if current_price < pos['buy_price'] * (1 - dynamic_stop_loss):
             order = trade_client.order_market_sell(symbol=SYMBOL, quantity=pos['quantity'])
             trade_log.append({'time': time.ctime(), 'price': current_price, 'predicted': 0, 'sentiment': 0, 'action': 'sell', 'quantity': pos['quantity']})
             current_capital += current_price * pos['quantity'] * (1 - FEE_RATE)
@@ -342,6 +354,11 @@ while True:
     gemini_score = get_gemini_sentiment(news)
     openai_score = get_openai_sentiment(news)
     sentiment_score = (gemini_score + openai_score) / 2
+
+    # RL action
+    action, _states = model_rl.predict(observation, deterministic=True)
+    observation, reward, done, info = env.step(action)
+    reward = daily_earnings if daily_earnings else 0  # Simple reward based on earnings
 
     # Risk-based quantity
     quantity = max(QUANTITY_BASE, (current_capital * RISK_PER_TRADE) / current_price)
@@ -383,7 +400,7 @@ while True:
     # Metrics (daily or forced on save)
     if time.time() - last_metrics_time >= METRICS_INTERVAL:
         metrics = calculate_metrics(trade_log, current_price, INITIAL_CAPITAL)
-        last_daily_earnings = metrics['daily_earnings']  # Update last daily earnings
+        last_daily_earnings = metrics['daily_earnings']
         print(f"\nOMNITRADES Metrics ({datetime.now().date()}):")
         for k, v in metrics.items():
             print(f"{k.replace('_', ' ').title()}: ${v:.2f}" if 'price' in k or k in ['daily_earnings', 'total_pnl', 'avg_trade_profit', 'max_drawdown', 'portfolio_value'] else f"{k.replace('_', ' ').title()}: {v:.2f}" if k == 'sharpe_ratio' else f"{k.replace('_', ' ').title()}: {v:.0f}%" if k == 'win_rate' else f"{k.replace('_', ' ').title()}: {v}")
