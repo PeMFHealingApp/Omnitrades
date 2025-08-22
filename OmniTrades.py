@@ -43,9 +43,9 @@ METRICS_INTERVAL = config['trading']['metrics_interval']
 RISK_PER_TRADE = config['trading']['risk_per_trade']
 STOP_LOSS = config['trading']['stop_loss']
 MAX_TRADES_PER_DAY = config['trading']['max_trades_per_day']
-NEWS_SOURCE = config['sentiment']['news_source'].replace(
-    'YOUR_NEWS_API_KEY', os.getenv('NEWS_API_KEY', '')
-)
+NEWS_SOURCE = (config['sentiment']['news_source']
+              .replace('YOUR_NEWS_API_KEY',
+                       os.getenv('NEWS_API_KEY', '')))
 NEWS_LIMIT = int(config['sentiment']['news_limit'])
 GEMINI_MODEL = config['sentiment']['gemini_model']
 OPENAI_MODEL = config['sentiment']['openai_model']
@@ -53,7 +53,7 @@ LOG_FILE = config['general']['log_file']
 DAILY_METRICS_FILE = config['general']['daily_metrics_file']
 TESTNET = config['general']['testnet']
 
-# Backward compatible aliases to prevent NameError if old names linger anywhere
+# Backward compatible aliases to prevent NameError if old names linger
 SENTIMENT_BUY_THRESHOLD = SENTIMENT_BUY
 SENTIMENT_SELL_THRESHOLD = SENTIMENT_SELL
 
@@ -82,8 +82,8 @@ def get_historical_data():
         data['low'] = data[['open', 'close']].min(axis=1)
         data['volume'] = np.random.randint(1000, 10000, DATA_LIMIT)
         print(
-            f"AI-generated historical data: {len(data)} days from {START_DATE} "
-            f"to {dates[-1].date()}"
+            f"AI-generated historical data: {len(data)} days "
+            f"from {START_DATE} to {dates[-1].date()}"
         )
         return data
     except Exception as e:
