@@ -8,13 +8,13 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import GRU, Dense, Dropout
-from tensorflow.keras.layers import Input  # Added for Keras fix
+from tensorflow.keras.layers import Input
 import google.generativeai as genai
 import openai
 import time
 from datetime import datetime
 import yfinance as yf
-import gymnasium as gym  # Updated from import gym
+import gymnasium as gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 
@@ -34,7 +34,7 @@ BATCH_SIZE = config['model']['batch_size']
 QUANTITY_BASE = config['trading']['quantity']
 PRICE_THRESHOLD = config['trading']['price_threshold']
 SENTIMENT_BUY = config['trading']['sentiment_buy_threshold']
-SENTIMENT_SELL = config['trading']['sentiment_sell_threshold']
+SENTIMENT_SELL = config['trading']['sentiment_sell_threshold']  # Corrected to match config
 TRADE_INTERVAL = config['trading']['trade_interval']
 INITIAL_CAPITAL = config['trading']['initial_capital']
 FEE_RATE = config['trading']['fee_rate']
@@ -92,7 +92,7 @@ def get_current_price():
 def get_global_factors():
     try:
         vix_data = yf.download('^VIX', period='1d', progress=False, auto_adjust=False)
-        vix = vix_data['Close'].iloc[-1] if not vix_data.empty else 20.0  # Default VIX to 20 if empty
+        vix = vix_data['Close'].iloc[-1] if not vix_data.empty else 20.0
         return {'vix': vix}
     except Exception as e:
         print(f"Error fetching VIX: {e}, using default value 20.0")
@@ -133,7 +133,7 @@ X_train, y_train = create_dataset(scaled_data, TIME_STEP)
 X_train = np.reshape(X_train, (X_train.shape[0], TIME_STEP, 3))
 
 model = Sequential()
-model.add(Input(shape=(TIME_STEP, 3)))  # Added Input layer for Keras fix
+model.add(Input(shape=(TIME_STEP, 3)))
 model.add(GRU(LSTM_UNITS, return_sequences=True))
 model.add(GRU(LSTM_UNITS))
 model.add(Dropout(0.2))
@@ -274,13 +274,13 @@ def calculate_metrics(trade_log, current_price, initial_capital):
 
 # Auto-correction logic
 def adjust_parameters(daily_earnings):
-    global PRICE_THRESHOLD, SENTIMENT_BUY_THRESHOLD, SENTIMENT_SELL_THRESHOLD
+    global PRICE_THRESHOLD, SENTIMENT_BUY, SENTIMENT_SELL  # Updated to match config
     MIN_EARNINGS = 1000.0
     if daily_earnings < MIN_EARNINGS:
         PRICE_THRESHOLD = max(0.0001, PRICE_THRESHOLD * 0.9)
-        SENTIMENT_BUY_THRESHOLD = max(0.3, SENTIMENT_BUY_THRESHOLD - 0.05)
-        SENTIMENT_SELL_THRESHOLD = min(0.3, SENTIMENT_SELL_THRESHOLD + 0.05)
-        print(f"Auto-correction applied: Price Threshold={PRICE_THRESHOLD}, Buy Threshold={SENTIMENT_BUY_THRESHOLD}, Sell Threshold={SENTIMENT_SELL_THRESHOLD}")
+        SENTIMENT_BUY = max(0.3, SENTIMENT_BUY - 0.05)
+        SENTIMENT_SELL = min(0.3, SENTIMENT_SELL + 0.05)
+        print(f"Auto-correction applied: Price Threshold={PRICE_THRESHOLD}, Buy Threshold={SENTIMENT_BUY}, Sell Threshold={SENTIMENT_SELL}")
 
 # Trading loop with RL
 trade_log = []
@@ -351,21 +351,21 @@ while True:
     # RL action
     action, _states = model_rl.predict(observation, deterministic=True)
     observation, reward, done, info = env.step(action)
-    reward = last_daily_earnings if last_daily_earnings is not None else 0  # Fixed reward assignment
+    reward = last_daily_earnings if last_daily_earnings is not None else 0
 
     # Risk-based quantity
     quantity = max(QUANTITY_BASE, (current_capital * RISK_PER_TRADE) / current_price)
 
     # Trading logic
     action = "hold"
-    if predicted_price > current_price * (1 + PRICE_THRESHOLD) and sentiment_score > SENTIMENT_BUY_THRESHOLD:
+    if predicted_price > current_price * (1 + PRICE_THRESHOLD) and sentiment_score > SENTIMENT_BUY:
         order = trade_client.order_market_buy(symbol=SYMBOL, quantity=quantity)
         action = "buy"
         current_capital -= current_price * quantity * (1 + FEE_RATE)
         open_positions.append({'buy_price': current_price, 'quantity': quantity})
         daily_trade_count += 1
         print(f"Buy {quantity} at {current_price}, Pred: {predicted_price}, Sentiment: {sentiment_score}")
-    elif predicted_price < current_price * (1 - PRICE_THRESHOLD) and sentiment_score < SENTIMENT_SELL_THRESHOLD:
+    elif predicted_price < current_price * (1 - PRICE_THRESHOLD) and sentiment_score < SENTIMENT_SELL:  # Updated to SENTIMENT_SELL
         order = trade_client.order_market_sell(symbol=SYMBOL, quantity=quantity)
         action = "sell"
         current_capital += current_price * quantity * (1 - FEE_RATE)
