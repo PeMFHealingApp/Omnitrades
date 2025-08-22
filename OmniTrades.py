@@ -17,9 +17,11 @@ import gymnasium as gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 
+
 # Load config
 with open('config.json', 'r') as f:
     config = json.load(f)
+
 
 # Extract parameters
 SYMBOL = config['data']['symbol']
@@ -53,14 +55,18 @@ TESTNET = config['general']['testnet']
 SENTIMENT_BUY_THRESHOLD = SENTIMENT_BUY
 SENTIMENT_SELL_THRESHOLD = SENTIMENT_SELL
 
+
 # API setup
 genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
 openai.api_key = os.getenv('OPENAI_API_KEY')
-trade_client = Client(os.getenv('BINANCE_TESTNET_API_KEY'),
-                      os.getenv('BINANCE_TESTNET_API_SECRET'),
-                      testnet=TESTNET)
+trade_client = Client(
+    os.getenv('BINANCE_TESTNET_API_KEY'),
+    os.getenv('BINANCE_TESTNET_API_SECRET'),
+    testnet=TESTNET
+)
 
-# ---------- Data generation and utilities ----------
+
+# Data generation and utilities
 def get_historical_data():
     try:
         dates = pd.date_range(start=START_DATE, periods=DATA_LIMIT, freq='D')
@@ -73,11 +79,15 @@ def get_historical_data():
         data['high'] = data[['open', 'close']].max(axis=1)
         data['low'] = data[['open', 'close']].min(axis=1)
         data['volume'] = np.random.randint(1000, 10000, DATA_LIMIT)
-        print(f"AI-generated historical data: {len(data)} days from {START_DATE} to {dates[-1].date()}")
+        print(
+            f"AI-generated historical data: {len(data)} days from {START_DATE} "
+            f"to {dates[-1].date()}"
+        )
         return data
     except Exception as e:
         print(f"Error generating historical data: {e}")
         return pd.DataFrame()
+
 
 def get_current_price():
     try:
@@ -85,24 +95,31 @@ def get_current_price():
         volatility = np.random.normal(0, 0.05)
         ai_price = base_price * (1 + volatility)
         ai_price = max(100000.0, min(120000.0, ai_price))
-        print(f"AI-generated current price: ${ai_price:.2f} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(
+            f"AI-generated current price: ${ai_price:.2f} at "
+            f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        )
         return ai_price
     except Exception as e:
         print(f"Error generating AI price: {e}")
         return 113000.0
 
+
 def get_global_factors():
     try:
-        vix_data = yf.download('^VIX', period='1d', progress=False, auto_adjust=False)
+        vix_data = yf.download('^VIX', period='1d', progress=False,
+                               auto_adjust=False)
         vix = float(vix_data['Close'].iloc[-1]) if not vix_data.empty else 20.0
         return {'vix': vix}
     except Exception as e:
         print(f"Error fetching VIX: {e}, using default value 20.0")
         return {'vix': 20.0}
 
+
 def get_x_sentiment(query="bitcoin price sentiment"):
-    # placeholder score
+    # Placeholder score
     return 0.6
+
 
 def prepare_scaled_data():
     data = get_historical_data()
@@ -117,14 +134,16 @@ def prepare_scaled_data():
     scaled_data = scaler.fit_transform(data[['close', 'vix', 'x_sentiment']])
     return scaled_data, scaler
 
+
 def create_dataset(dataset, time_step):
     X, Y = [], []
     for i in range(len(dataset) - time_step - 1):
         X.append(dataset[i:(i + time_step), :])
-        Y.append(dataset[i + time_step, 0]) # close column
+        Y.append(dataset[i + time_step, 0])  # Close column
     return np.array(X), np.array(Y)
 
-# ---------- Train models ----------
+
+# Train models
 scaled_data, scaler = prepare_scaled_data()
 if scaled_data is None or scaler is None:
     print("Failed to prepare data for training. Exiting.")
@@ -145,12 +164,15 @@ model.fit(X_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, verbose=1)
 rf_model = RandomForestRegressor(n_estimators=100)
 rf_model.fit(X_train.reshape(X_train.shape[0], -1), y_train)
 
+
 def predict_next_price():
     scaled, sc = prepare_scaled_data()
     if scaled is None or sc is None or len(scaled) < TIME_STEP:
         return 0.0
     last_window = scaled[-TIME_STEP:]
-    gru_pred = model.predict(np.reshape(last_window, (1, TIME_STEP, 3)), verbose=0)[0][0]
+    gru_pred = model.predict(
+        np.reshape(last_window, (1, TIME_STEP, 3)), verbose=0
+    )[0][0]
     rf_pred = rf_model.predict(last_window.reshape(1, -1))[0]
     pred_scaled = (gru_pred + rf_pred) / 2.0
     # Correct inverse for MinMaxScaler: X = (X_scaled - min_) / scale_
@@ -159,19 +181,27 @@ def predict_next_price():
     inverse_pred = (pred_scaled - price_min) / price_scale
     return float(inverse_pred)
 
-# ---------- Sentiment ----------
+
+# Sentiment
 def get_gemini_sentiment(news_texts):
     try:
         gmodel = genai.GenerativeModel(GEMINI_MODEL)
-        prompt = f"Analyze these for {SYMBOL} sentiment as a single float between 0 and 1, where 1 is very bullish: {'; '.join(news_texts)}"
+        prompt = (
+            f"Analyze these for {SYMBOL} sentiment as a single float between 0 "
+            f"and 1, where 1 is very bullish: {'; '.join(news_texts)}"
+        )
         response = gmodel.generate_content(prompt)
         return float(response.text.strip())
     except Exception:
         return 0.5
 
+
 def get_openai_sentiment(news_texts):
     try:
-        prompt = f"Analyze these news for {SYMBOL} sentiment as a single float between 0 and 1, where 1 is very bullish: {'; '.join(news_texts)}"
+        prompt = (
+            f"Analyze these news for {SYMBOL} sentiment as a single float "
+            f"between 0 and 1, where 1 is very bullish: {'; '.join(news_texts)}"
+        )
         # Legacy ChatCompletion for compatibility
         resp = openai.ChatCompletion.create(
             model=OPENAI_MODEL,
@@ -180,6 +210,7 @@ def get_openai_sentiment(news_texts):
         return float(resp.choices[0].message['content'].strip())
     except Exception:
         return 0.5
+
 
 def get_recent_news():
     try:
@@ -190,7 +221,8 @@ def get_recent_news():
     except Exception:
         return ["No news."]
 
-# ---------- Metrics ----------
+
+# Metrics
 def calculate_metrics(trade_log, current_price, initial_capital):
     if not trade_log:
         return {
@@ -209,12 +241,15 @@ def calculate_metrics(trade_log, current_price, initial_capital):
     daily_trades = df[df['time'] >= today]
     # Daily earnings
     daily_earnings = 0.0
-    buy_trades = daily_trades[daily_trades['action'] == 'buy'].iloc[::-1].to_dict('records')
-    sell_trades = daily_trades[daily_trades['action'] == 'sell'].to_dict('records')
+    buy_trades = daily_trades[daily_trades['action'] == 'buy'].iloc[::-1] \
+        .to_dict('records')
+    sell_trades = daily_trades[daily_trades['action'] == 'sell'] \
+        .to_dict('records')
     for sell in sell_trades:
         for buy in buy_trades:
             if buy['time'] < sell['time']:
-                profit = (sell['price'] - buy['price']) * buy['quantity'] * (1 - 2 * FEE_RATE)
+                profit = (sell['price'] - buy['price']) * buy['quantity'] * \
+                         (1 - 2 * FEE_RATE)
                 daily_earnings += profit
                 buy_trades.remove(buy)
                 break
@@ -225,7 +260,8 @@ def calculate_metrics(trade_log, current_price, initial_capital):
     for sell in all_sell_trades:
         for buy in all_buy_trades:
             if buy['time'] < sell['time']:
-                profit = (sell['price'] - buy['price']) * buy['quantity'] * (1 - 2 * FEE_RATE)
+                profit = (sell['price'] - buy['price']) * buy['quantity'] * \
+                         (1 - 2 * FEE_RATE)
                 total_pnl += profit
                 all_buy_trades.remove(buy)
                 break
@@ -239,7 +275,8 @@ def calculate_metrics(trade_log, current_price, initial_capital):
                 profits.append(profit)
                 all_buy_trades.remove(buy)
                 break
-    win_rate = len([p for p in profits if p > 0]) / len(profits) if profits else 0.0
+    win_rate = len([p for p in profits if p > 0]) / len(profits) if profits \
+        else 0.0
     num_trades = int(len(df[df['action'].isin(['buy', 'sell'])]))
     avg_trade_profit = float(np.mean(profits)) if profits else 0.0
     # Simple portfolio and drawdown
@@ -248,17 +285,26 @@ def calculate_metrics(trade_log, current_price, initial_capital):
     trades_open = []
     for _, trade in df.iterrows():
         if trade['action'] == 'buy':
-            trades_open.append({'buy_price': trade['price'], 'quantity': trade['quantity']})
+            trades_open.append({
+                'buy_price': trade['price'],
+                'quantity': trade['quantity']
+            })
             current_cash -= trade['price'] * trade['quantity'] * (1 + FEE_RATE)
         elif trade['action'] == 'sell' and trades_open:
-            buy_trade = trades_open.pop(0)
+            trades_open.pop(0)
             current_cash += trade['price'] * trade['quantity'] * (1 - FEE_RATE)
-        portfolio_values.append(current_cash + sum(t['quantity'] * current_price for t in trades_open))
+        portfolio_values.append(
+            current_cash + sum(t['quantity'] * current_price for t in trades_open)
+        )
     max_drawdown = max(0, max(portfolio_values) - min(portfolio_values))
-    portfolio_value = current_cash + sum(t['quantity'] * current_price for t in trades_open)
+    portfolio_value = current_cash + sum(
+        t['quantity'] * current_price for t in trades_open
+    )
     # Sharpe placeholder to avoid divide by zero with small logs
-    daily_returns = np.diff(portfolio_values) if len(portfolio_values) > 1 else np.array([0.0])
-    sharpe_ratio = float(np.mean(daily_returns) / np.std(daily_returns)) if np.std(daily_returns) != 0 else 0.0
+    daily_returns = np.diff(portfolio_values) if len(portfolio_values) > 1 \
+        else np.array([0.0])
+    sharpe_ratio = float(np.mean(daily_returns) / np.std(daily_returns)) \
+        if np.std(daily_returns) != 0 else 0.0
     return {
         'daily_earnings': float(daily_earnings),
         'total_pnl': float(total_pnl),
@@ -270,6 +316,7 @@ def calculate_metrics(trade_log, current_price, initial_capital):
         'portfolio_value': float(portfolio_value)
     }
 
+
 def adjust_parameters(daily_earnings):
     global PRICE_THRESHOLD, SENTIMENT_BUY, SENTIMENT_SELL
     MIN_EARNINGS = 1000.0
@@ -277,9 +324,13 @@ def adjust_parameters(daily_earnings):
         PRICE_THRESHOLD = max(0.0001, PRICE_THRESHOLD * 0.9)
         SENTIMENT_BUY = max(0.3, SENTIMENT_BUY - 0.05)
         SENTIMENT_SELL = min(0.3, SENTIMENT_SELL + 0.05)
-        print(f"Auto-correction applied: Price Threshold={PRICE_THRESHOLD}, Buy Threshold={SENTIMENT_BUY}, Sell Threshold={SENTIMENT_SELL}")
+        print(
+            f"Auto-correction applied: Price Threshold={PRICE_THRESHOLD}, "
+            f"Buy Threshold={SENTIMENT_BUY}, Sell Threshold={SENTIMENT_SELL}"
+        )
 
-# ---------- Trading loop setup ----------
+
+# Trading loop setup
 trade_log = []
 last_metrics_time = time.time()
 current_capital = INITIAL_CAPITAL
@@ -289,17 +340,21 @@ open_positions = []
 last_daily_earnings = 0.0
 
 # RL environment placeholder
-# Use a standard Gymnasium id
 env = DummyVecEnv([lambda: gym.make('CartPole-v1')])
 model_rl = PPO("MlpPolicy", env, verbose=0)
 observation = env.reset()
 
 # Initialize empty log files
 if not os.path.exists(LOG_FILE):
-    pd.DataFrame(columns=['time', 'price', 'predicted', 'sentiment', 'action', 'quantity']).to_csv(LOG_FILE, index=False)
+    pd.DataFrame(columns=[
+        'time', 'price', 'predicted', 'sentiment', 'action', 'quantity'
+    ]).to_csv(LOG_FILE, index=False)
     print(f"Initialized empty {LOG_FILE}")
 if not os.path.exists(DAILY_METRICS_FILE):
-    pd.DataFrame(columns=['date', 'daily_earnings', 'total_pnl', 'win_rate', 'num_trades', 'avg_trade_profit', 'sharpe_ratio', 'max_drawdown', 'portfolio_value']).to_csv(DAILY_METRICS_FILE, index=False)
+    pd.DataFrame(columns=[
+        'date', 'daily_earnings', 'total_pnl', 'win_rate', 'num_trades',
+        'avg_trade_profit', 'sharpe_ratio', 'max_drawdown', 'portfolio_value'
+    ]).to_csv(DAILY_METRICS_FILE, index=False)
     print(f"Initialized empty {DAILY_METRICS_FILE}")
 
 print("Starting trading loop with capital:", current_capital)
@@ -332,10 +387,18 @@ while True:
     for pos in open_positions[:]:
         if current_price < pos['buy_price'] * (1 - dynamic_stop_loss):
             try:
-                trade_client.order_market_sell(symbol=SYMBOL, quantity=pos['quantity'])
+                trade_client.order_market_sell(symbol=SYMBOL,
+                                               quantity=pos['quantity'])
             except Exception as e:
                 print(f"Binance sell error on stop-loss: {e}")
-            trade_log.append({'time': time.ctime(), 'price': current_price, 'predicted': 0, 'sentiment': 0, 'action': 'sell', 'quantity': pos['quantity']})
+            trade_log.append({
+                'time': time.ctime(),
+                'price': current_price,
+                'predicted': 0,
+                'sentiment': 0,
+                'action': 'sell',
+                'quantity': pos['quantity']
+            })
             current_capital += current_price * pos['quantity'] * (1 - FEE_RATE)
             open_positions.remove(pos)
             daily_trade_count += 1
@@ -350,14 +413,16 @@ while True:
     # RL action placeholder
     action_vec, _states = model_rl.predict(observation, deterministic=True)
     observation, rewards, dones, infos = env.step(action_vec)
-    _ = last_daily_earnings # placeholder to show feedback is available
+    _ = last_daily_earnings  # Placeholder to show feedback is available
 
     # Risk-based quantity
-    quantity = max(QUANTITY_BASE, (current_capital * RISK_PER_TRADE) / current_price)
+    quantity = max(QUANTITY_BASE, (current_capital * RISK_PER_TRADE) /
+                   current_price)
 
     # Trading logic
     action = "hold"
-    if predicted_price > current_price * (1 + PRICE_THRESHOLD) and sentiment_score > SENTIMENT_BUY:
+    if (predicted_price > current_price * (1 + PRICE_THRESHOLD) and
+            sentiment_score > SENTIMENT_BUY):
         try:
             trade_client.order_market_buy(symbol=SYMBOL, quantity=quantity)
         except Exception as e:
@@ -366,8 +431,12 @@ while True:
         current_capital -= current_price * quantity * (1 + FEE_RATE)
         open_positions.append({'buy_price': current_price, 'quantity': quantity})
         daily_trade_count += 1
-        print(f"Buy {quantity} at {current_price}, Pred: {predicted_price}, Sentiment: {sentiment_score}")
-    elif predicted_price < current_price * (1 - PRICE_THRESHOLD) and sentiment_score < SENTIMENT_SELL:
+        print(
+            f"Buy {quantity} at {current_price}, Pred: {predicted_price}, "
+            f"Sentiment: {sentiment_score}"
+        )
+    elif (predicted_price < current_price * (1 - PRICE_THRESHOLD) and
+          sentiment_score < SENTIMENT_SELL):
         try:
             trade_client.order_market_sell(symbol=SYMBOL, quantity=quantity)
         except Exception as e:
@@ -375,10 +444,20 @@ while True:
         action = "sell"
         current_capital += current_price * quantity * (1 - FEE_RATE)
         daily_trade_count += 1
-        print(f"Sell {quantity} at {current_price}, Pred: {predicted_price}, Sentiment: {sentiment_score}")
+        print(
+            f"Sell {quantity} at {current_price}, Pred: {predicted_price}, "
+            f"Sentiment: {sentiment_score}"
+        )
 
     # Log trade
-    trade_log.append({'time': time.ctime(), 'price': current_price, 'predicted': predicted_price, 'sentiment': sentiment_score, 'action': action, 'quantity': quantity})
+    trade_log.append({
+        'time': time.ctime(),
+        'price': current_price,
+        'predicted': predicted_price,
+        'sentiment': sentiment_score,
+        'action': action,
+        'quantity': quantity
+    })
     pd.DataFrame(trade_log).to_csv(LOG_FILE, index=False)
     print(f"Trade saved: {action} {quantity} at {current_price}")
 
@@ -390,8 +469,16 @@ while True:
             metrics = calculate_metrics(trade_log, current_price, INITIAL_CAPITAL)
             last_daily_earnings = metrics['daily_earnings']
             daily_metrics = [{'date': datetime.now().date(), **metrics}]
-            pd.DataFrame(daily_metrics).to_csv(DAILY_METRICS_FILE, mode='a', header=not os.path.exists(DAILY_METRICS_FILE), index=False)
-            print(f"Periodic metrics saved for {datetime.now().date()} with earnings: {metrics['daily_earnings']}")
+            pd.DataFrame(daily_metrics).to_csv(
+                DAILY_METRICS_FILE,
+                mode='a',
+                header=not os.path.exists(DAILY_METRICS_FILE),
+                index=False
+            )
+            print(
+                f"Periodic metrics saved for {datetime.now().date()} with "
+                f"earnings: {metrics['daily_earnings']}"
+            )
             last_metrics_time = time.time()
         last_save_time = time.time()
 
@@ -400,7 +487,8 @@ while True:
         last_daily_earnings = metrics['daily_earnings']
         print(f"\nOMNITRADES Metrics ({datetime.now().date()}):")
         for k, v in metrics.items():
-            if k in ['daily_earnings', 'total_pnl', 'avg_trade_profit', 'max_drawdown', 'portfolio_value']:
+            if k in ['daily_earnings', 'total_pnl', 'avg_trade_profit',
+                     'max_drawdown', 'portfolio_value']:
                 print(f"{k.replace('_', ' ').title()}: ${v:.2f}")
             elif k == 'sharpe_ratio':
                 print(f"{k.replace('_', ' ').title()}: {v:.2f}")
@@ -409,8 +497,16 @@ while True:
             else:
                 print(f"{k.replace('_', ' ').title()}: {v}")
         daily_metrics = [{'date': datetime.now().date(), **metrics}]
-        pd.DataFrame(daily_metrics).to_csv(DAILY_METRICS_FILE, mode='a', header=not os.path.exists(DAILY_METRICS_FILE), index=False)
-        print(f"Metrics saved for {datetime.now().date()} with earnings: {metrics['daily_earnings']}")
+        pd.DataFrame(daily_metrics).to_csv(
+            DAILY_METRICS_FILE,
+            mode='a',
+            header=not os.path.exists(DAILY_METRICS_FILE),
+            index=False
+        )
+        print(
+            f"Metrics saved for {datetime.now().date()} with "
+            f"earnings: {metrics['daily_earnings']}"
+        )
         last_metrics_time = time.time()
 
     time.sleep(TRADE_INTERVAL)
