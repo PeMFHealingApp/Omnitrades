@@ -8,12 +8,13 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import GRU, Dense, Dropout
+from tensorflow.keras.layers import Input  # Added for Keras fix
 import google.generativeai as genai
 import openai
 import time
 from datetime import datetime
 import yfinance as yf
-import gym
+import gymnasium as gym  # Updated from import gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 
@@ -90,7 +91,6 @@ def get_current_price():
 # Fetch global factors (e.g., VIX) with fallback
 def get_global_factors():
     try:
-        yf.pdr_override()  # Use pandas_datareader override to avoid impersonation issues
         vix_data = yf.download('^VIX', period='1d', progress=False, auto_adjust=False)
         vix = vix_data['Close'].iloc[-1] if not vix_data.empty else 20.0  # Default VIX to 20 if empty
         return {'vix': vix}
@@ -133,7 +133,8 @@ X_train, y_train = create_dataset(scaled_data, TIME_STEP)
 X_train = np.reshape(X_train, (X_train.shape[0], TIME_STEP, 3))
 
 model = Sequential()
-model.add(GRU(LSTM_UNITS, return_sequences=True, input_shape=(TIME_STEP, 3)))
+model.add(Input(shape=(TIME_STEP, 3)))  # Added Input layer for Keras fix
+model.add(GRU(LSTM_UNITS, return_sequences=True))
 model.add(GRU(LSTM_UNITS))
 model.add(Dropout(0.2))
 model.add(Dense(1))
