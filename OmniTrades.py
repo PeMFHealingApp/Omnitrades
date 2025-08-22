@@ -137,8 +137,6 @@ model.add(GRU(LSTM_UNITS))
 model.add(Dropout(0.2))
 model.add(Dense(1))
 model.compile(optimizer='adam', loss='mean_squared_error')
-
-# Hyperparameter tuning (avoid GridSearchCV with Keras directly)
 model.fit(X_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, verbose=1)
 
 # Ensemble with Random Forest
