@@ -143,7 +143,7 @@ model.fit(X_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, verbose=1)
 rf_model = RandomForestRegressor(n_estimators=100)
 rf_model.fit(X_train.reshape(X_train.shape[0], -1), y_train)
 
-# Predict next price
+# Predict next price with ensemble
 def predict_next_price():
     scaled_data, scaler = prepare_scaled_data()
     if scaled_data is None or scaler is None or len(scaled_data) < TIME_STEP:
@@ -152,7 +152,11 @@ def predict_next_price():
     gru_pred = model.predict(np.reshape(last_data, (1, TIME_STEP, 3)))[0][0]
     rf_pred = rf_model.predict(last_data.reshape(1, -1))[0]
     pred = (gru_pred + rf_pred) / 2
-    return scaler.inverse_transform([[pred]])[0][0]
+    # Use only the first feature (close) scale for inverse transform
+    price_scale = scaler.scale_[0]
+    price_min = scaler.min_[0]
+    inverse_pred = (pred * price_scale) + price_min
+    return inverse_pred
 
 # Sentiment analysis
 def get_gemini_sentiment(news_texts):
