@@ -365,7 +365,7 @@ while True:
         open_positions.append({'buy_price': current_price, 'quantity': quantity})
         daily_trade_count += 1
         print(f"Buy {quantity} at {current_price}, Pred: {predicted_price}, Sentiment: {sentiment_score}")
-    elif predicted_price < current_price * (1 - PRICE_THRESHOLD) and sentiment_score < SENTIMENT_SELL:  # Corrected
+    elif predicted_price < current_price * (1 - PRICE_THRESHOLD) and sentiment_score < SENTIMENT_SELL:
         order = trade_client.order_market_sell(symbol=SYMBOL, quantity=quantity)
         action = "sell"
         current_capital += current_price * quantity * (1 - FEE_RATE)
