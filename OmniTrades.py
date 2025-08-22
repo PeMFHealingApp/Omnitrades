@@ -87,15 +87,16 @@ def get_current_price():
         print(f"Error generating AI price: {e}")
         return 113000.0
 
-# Fetch global factors (e.g., VIX)
+# Fetch global factors (e.g., VIX) with fallback
 def get_global_factors():
     try:
-        vix_data = yf.download('^VIX', period='1d', progress=False)
-        vix = vix_data['Close'].iloc[-1] if not vix_data.empty else 0.0
+        yf.pdr_override()  # Use pandas_datareader override to avoid impersonation issues
+        vix_data = yf.download('^VIX', period='1d', progress=False, auto_adjust=False)
+        vix = vix_data['Close'].iloc[-1] if not vix_data.empty else 20.0  # Default VIX to 20 if empty
         return {'vix': vix}
     except Exception as e:
-        print(f"Error fetching VIX: {e}")
-        return {'vix': 0.0}
+        print(f"Error fetching VIX: {e}, using default value 20.0")
+        return {'vix': 20.0}
 
 # Fetch X sentiment (placeholder)
 def get_x_sentiment(query="bitcoin price sentiment"):
@@ -349,7 +350,7 @@ while True:
     # RL action
     action, _states = model_rl.predict(observation, deterministic=True)
     observation, reward, done, info = env.step(action)
-    reward = last_daily_earnings if last_daily_earnings is not None else 0  # Ensure reward is defined
+    reward = last_daily_earnings if last_daily_earnings is not None else 0  # Fixed reward assignment
 
     # Risk-based quantity
     quantity = max(QUANTITY_BASE, (current_capital * RISK_PER_TRADE) / current_price)
