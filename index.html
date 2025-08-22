@@ -24,6 +24,7 @@
          .status-error { color: #ff4444; }
          .status-active { color: #00cc00; }
          .status-idle { color: #cccc00; }
+         .status-waiting { color: #666; } /* New style for waiting state */
        </style>
      </head>
      <body>
@@ -55,7 +56,7 @@
                </thead>
                <tbody></tbody>
              </table>
-             <p id="gainLossNote" class="info">Note: No trade/metrics data yet. Run the workflow or check <a href="https://github.com/PeMFHealingApp/Omnitrades/actions" target="_blank">logs</a> for real-time updates.</p>
+             <p id="gainLossNote" class="info">Note: Waiting for trades. Run the workflow or check <a href="https://github.com/PeMFHealingApp/Omnitrades/actions" target="_blank">logs</a> for real-time updates.</p>
            </div>
          </div>
          <div class="card">
@@ -77,99 +78,118 @@
          async function fetchData() {
            try {
              const tradeResponse = await fetch('https://raw.githubusercontent.com/PeMFHealingApp/Omnitrades/main/trades.csv');
-             if (!tradeResponse.ok) throw new Error(`Trade data fetch failed: ${tradeResponse.status} ${tradeResponse.statusText}`);
-             const tradeText = await tradeResponse.text();
-             const tradeLines = tradeText.split('\n').filter(line => line.trim());
-             const data = tradeLines.map(line => {
-               const [time, price, predicted, sentiment, action, quantity] = line.split(',');
-               return { time, price: parseFloat(price) || 0, predicted: parseFloat(predicted) || 0, sentiment: parseFloat(sentiment) || 0, action, quantity: parseFloat(quantity) || 0 };
-             });
-
-             let metricsResponse = await fetch('https://raw.githubusercontent.com/PeMFHealingApp/Omnitrades/main/daily_metrics.csv');
-             if (!metricsResponse.ok) throw new Error(`Metrics data fetch failed: ${metricsResponse.status} ${metricsResponse.statusText}`);
-             let metricsText = await metricsResponse.text();
-             if (metricsResponse.status === 404) {
-               document.getElementById('gainLossNote').textContent = 'Note: No trade/metrics data yet. Run the workflow or check <a href="https://github.com/PeMFHealingApp/Omnitrades/actions" target="_blank">logs</a> for real-time updates.';
-               metricsText = 'date,daily_earnings,total_pnl,win_rate,num_trades,avg_trade_profit,sharpe_ratio,max_drawdown,portfolio_value\n';
-             }
-             const metricsLines = metricsText.split('\n').filter(line => line.trim());
-             const metrics = metricsLines.map(line => {
-               const [date, daily_earnings, total_pnl, win_rate, num_trades, avg_trade_profit, sharpe_ratio, max_drawdown, portfolio_value] = line.split(',');
-               return { date, daily_earnings: parseFloat(daily_earnings) || 0, total_pnl: parseFloat(total_pnl) || 0, win_rate: parseFloat(win_rate) || 0, num_trades: parseInt(num_trades) || 0, avg_trade_profit: parseFloat(avg_trade_profit) || 0, sharpe_ratio: parseFloat(sharpe_ratio) || 0, max_drawdown: parseFloat(max_drawdown) || 0, portfolio_value: parseFloat(portfolio_value) || 0 };
-             });
-
-             // Workflow status
-             const workflowResponse = await fetch('https://api.github.com/repos/PeMFHealingApp/Omnitrades/actions/runs?per_page=1&status=completed', {
-               headers: { 'Accept': 'application/vnd.github.v3+json' }
-             });
-             const workflowData = await workflowResponse.json();
-             const latestRun = workflowData.workflow_runs[0];
-             let statusText = 'IDLE: No Recent Run';
-             let statusClass = 'status-idle';
-             if (latestRun) {
-               if (latestRun.conclusion === 'success') {
-                 statusText = 'ACTIVE: Paper Trading';
-                 statusClass = 'status-active';
+             if (!tradeResponse.ok) {
+               if (tradeResponse.status === 404) {
+                 document.getElementById('workflowStatus').innerHTML = '<span class="status-waiting">Waiting for trades</span>';
+                 document.getElementById('lastTrade').textContent = 'Last Trade: None';
+                 document.getElementById('sentiment').textContent = 'Sentiment Score: N/A';
                } else {
-                 statusText = `ERROR: ${latestRun.message || 'Unknown error'}`;
-                 statusClass = 'status-error';
+                 throw new Error(`Trade data fetch failed: ${tradeResponse.status} ${tradeResponse.statusText}`);
                }
-             }
-             document.getElementById('workflowStatus').innerHTML = `<span class="${statusClass}">${statusText}</span>`;
-
-             const lastTrade = data.length ? data[data.length - 1] : { action: 'None', price: 0, sentiment: 0 };
-             const currentPrice = await get_current_price();
-             document.getElementById('currentCrypto').textContent = `Trading: BTC`;
-             document.getElementById('currentPrice').textContent = `Current Price: $${currentPrice.toFixed(2)}`;
-             document.getElementById('dataSource').textContent = `Data Source: CoinGecko (Real-time, updated ${new Date().toLocaleTimeString()})`;
-             document.getElementById('lastTrade').textContent = `Last Trade: ${lastTrade.action} ${lastTrade.quantity} at $${lastTrade.price.toFixed(2)}`;
-             document.getElementById('sentiment').textContent = `Sentiment Score: ${lastTrade.sentiment.toFixed(2)}`;
-             const latestMetrics = metrics.length ? metrics[metrics.length - 1] : {};
-             document.getElementById('totalPnl').textContent = `Total P&L: $${latestMetrics.total_pnl.toFixed(2)}`;
-             document.getElementById('dailyEarnings').textContent = `Daily Earnings: $${latestMetrics.daily_earnings.toFixed(2)}`;
-             document.getElementById('winRate').textContent = `Win Rate: ${(latestMetrics.win_rate * 100).toFixed(2)}%`;
-             document.getElementById('numTrades').textContent = `Number of Trades: ${latestMetrics.num_trades}`;
-             document.getElementById('historicalRange').textContent = `Historical Data: Jan 1, 2022 - ${new Date().toLocaleDateString()}`;
-
-             // Destroy existing chart before creating a new one
-             if (earningsChart) {
-               earningsChart.destroy();
-             }
-
-             // Daily Gain/Loss Table
-             const tableBody = document.querySelector('#gainLossTable tbody');
-             tableBody.innerHTML = '';
-             if (metricsResponse.status === 404 || !metrics.length) {
-               const row = document.createElement('tr');
-               row.innerHTML = `<td>Initial</td><td>$0.00</td>`;
-               tableBody.appendChild(row);
              } else {
-               metrics.forEach(metric => {
-                 const row = document.createElement('tr');
-                 row.innerHTML = `<td>${metric.date}</td><td>$${metric.daily_earnings.toFixed(2)}</td>`;
-                 tableBody.appendChild(row);
+               const tradeText = await tradeResponse.text();
+               const tradeLines = tradeText.split('\n').filter(line => line.trim());
+               const data = tradeLines.map(line => {
+                 const [time, price, predicted, sentiment, action, quantity] = line.split(',');
+                 return { time, price: parseFloat(price) || 0, predicted: parseFloat(predicted) || 0, sentiment: parseFloat(sentiment) || 0, action, quantity: parseFloat(quantity) || 0 };
                });
-             }
 
-             const ctx = document.getElementById('earningsChart').getContext('2d');
-             earningsChart = new Chart(ctx, {
-               type: 'line',
-               data: {
-                 labels: metrics.map(m => m.date),
-                 datasets: [{
-                   label: 'Daily Earnings ($)',
-                   data: metrics.map(m => m.daily_earnings),
-                   borderColor: 'rgba(75, 192, 192, 1)',
-                   fill: false
-                 }]
-               },
-               options: {
-                 scales: { y: { beginAtZero: true } }
+               let metricsResponse = await fetch('https://raw.githubusercontent.com/PeMFHealingApp/Omnitrades/main/daily_metrics.csv');
+               if (!metricsResponse.ok) {
+                 if (metricsResponse.status === 404) {
+                   document.getElementById('gainLossNote').textContent = 'Note: Waiting for trades. Run the workflow or check <a href="https://github.com/PeMFHealingApp/Omnitrades/actions" target="_blank">logs</a> for real-time updates.';
+                 } else {
+                   throw new Error(`Metrics data fetch failed: ${metricsResponse.status} ${metricsResponse.statusText}`);
+                 }
+               } else {
+                 let metricsText = await metricsResponse.text();
+                 const metricsLines = metricsText.split('\n').filter(line => line.trim());
+                 const metrics = metricsLines.map(line => {
+                   const [date, daily_earnings, total_pnl, win_rate, num_trades, avg_trade_profit, sharpe_ratio, max_drawdown, portfolio_value] = line.split(',');
+                   return { date, daily_earnings: parseFloat(daily_earnings) || 0, total_pnl: parseFloat(total_pnl) || 0, win_rate: parseFloat(win_rate) || 0, num_trades: parseInt(num_trades) || 0, avg_trade_profit: parseFloat(avg_trade_profit) || 0, sharpe_ratio: parseFloat(sharpe_ratio) || 0, max_drawdown: parseFloat(max_drawdown) || 0, portfolio_value: parseFloat(portfolio_value) || 0 };
+                 });
+
+                 // Workflow status
+                 const workflowResponse = await fetch('https://api.github.com/repos/PeMFHealingApp/Omnitrades/actions/runs?per_page=1&status=completed', {
+                   headers: { 'Accept': 'application/vnd.github.v3+json' }
+                 });
+                 const workflowData = await workflowResponse.json();
+                 const latestRun = workflowData.workflow_runs[0];
+                 let statusText = 'IDLE: No Recent Run';
+                 let statusClass = 'status-idle';
+                 if (latestRun) {
+                   if (latestRun.conclusion === 'success') {
+                     statusText = 'ACTIVE: Paper Trading';
+                     statusClass = 'status-active';
+                   } else {
+                     statusText = `ERROR: ${latestRun.message || 'Unknown error'}`;
+                     statusClass = 'status-error';
+                   }
+                 }
+                 document.getElementById('workflowStatus').innerHTML = `<span class="${statusClass}">${statusText}</span>`;
+
+                 const lastTrade = data.length ? data[data.length - 1] : { action: 'None', price: 0, sentiment: 0 };
+                 const currentPrice = await get_current_price();
+                 document.getElementById('currentCrypto').textContent = `Trading: BTC`;
+                 document.getElementById('currentPrice').textContent = `Current Price: $${currentPrice.toFixed(2)}`;
+                 document.getElementById('dataSource').textContent = `Data Source: CoinGecko (Real-time, updated ${new Date().toLocaleTimeString()})`;
+                 document.getElementById('lastTrade').textContent = `Last Trade: ${lastTrade.action} ${lastTrade.quantity} at $${lastTrade.price.toFixed(2)}`;
+                 document.getElementById('sentiment').textContent = `Sentiment Score: ${lastTrade.sentiment.toFixed(2)}`;
+                 const latestMetrics = metrics.length ? metrics[metrics.length - 1] : {};
+                 document.getElementById('totalPnl').textContent = `Total P&L: $${latestMetrics.total_pnl.toFixed(2)}`;
+                 document.getElementById('dailyEarnings').textContent = `Daily Earnings: $${latestMetrics.daily_earnings.toFixed(2)}`;
+                 document.getElementById('winRate').textContent = `Win Rate: ${(latestMetrics.win_rate * 100).toFixed(2)}%`;
+                 document.getElementById('numTrades').textContent = `Number of Trades: ${latestMetrics.num_trades}`;
+                 document.getElementById('historicalRange').textContent = `Historical Data: Jan 1, 2022 - ${new Date().toLocaleDateString()}`;
+
+                 // Destroy existing chart before creating a new one
+                 if (earningsChart) {
+                   earningsChart.destroy();
+                 }
+
+                 // Daily Gain/Loss Table
+                 const tableBody = document.querySelector('#gainLossTable tbody');
+                 tableBody.innerHTML = '';
+                 if (metricsResponse.status === 404 || !metrics.length) {
+                   const row = document.createElement('tr');
+                   row.innerHTML = `<td>Initial</td><td>$0.00</td>`;
+                   tableBody.appendChild(row);
+                 } else {
+                   metrics.forEach(metric => {
+                     const row = document.createElement('tr');
+                     row.innerHTML = `<td>${metric.date}</td><td>$${metric.daily_earnings.toFixed(2)}</td>`;
+                     tableBody.appendChild(row);
+                   });
+                 }
+
+                 const ctx = document.getElementById('earningsChart').getContext('2d');
+                 earningsChart = new Chart(ctx, {
+                   type: 'line',
+                   data: {
+                     labels: metrics.map(m => m.date),
+                     datasets: [{
+                       label: 'Daily Earnings ($)',
+                       data: metrics.map(m => m.daily_earnings),
+                       borderColor: 'rgba(75, 192, 192, 1)',
+                       fill: false
+                     }]
+                   },
+                   options: {
+                     scales: { y: { beginAtZero: true } }
+                   }
+                 });
                }
-             });
+             }
            } catch (error) {
              console.error('Error fetching data:', error);
-             document.getElementById('workflowStatus').innerHTML = `<span class="status-error">ERROR: Failed to load data (${error.message})</span>`;
+             if (error.message.includes('404')) {
+               document.getElementById('workflowStatus').innerHTML = '<span class="status-waiting">Waiting for trades</span>';
+               document.getElementById('lastTrade').textContent = 'Last Trade: None';
+               document.getElementById('sentiment').textContent = 'Sentiment Score: N/A';
+               document.getElementById('gainLossNote').textContent = 'Note: Waiting for trades. Run the workflow or check <a href="https://github.com/PeMFHealingApp/Omnitrades/actions" target="_blank">logs</a> for real-time updates.';
+             } else {
+               document.getElementById('workflowStatus').innerHTML = `<span class="status-error">ERROR: Failed to load data (${error.message})</span>`;
+             }
            }
          }
 
