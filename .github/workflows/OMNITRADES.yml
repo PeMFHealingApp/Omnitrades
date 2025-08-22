@@ -17,10 +17,11 @@ jobs:
         run: |
           cat OmniTrades.py  # Output full script
           grep SENTIMENT_SELL OmniTrades.py  # Check for correct variable usage
+          grep SENTIMENT_SELL_THRESHOLD OmniTrades.py || echo "SENTIMENT_SELL_THRESHOLD not found"
       - name: Lint code
         run: |
           pip install flake8
-          flake8 OmniTrades.py  # Catch syntax errors and typos
+          flake8 OmniTrades.py  # Ensure no linting errors
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
