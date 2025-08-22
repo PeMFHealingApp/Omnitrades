@@ -13,7 +13,7 @@ import openai
 import time
 from datetime import datetime
 import yfinance as yf
-import gym
+import gymnasium as gym  # Updated from import gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 
