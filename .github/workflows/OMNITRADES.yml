@@ -15,7 +15,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install python-binance tensorflow pandas numpy requests python-dotenv google-generativeai openai scikit-learn yfinance stable-baselines3 gym
+          pip install python-binance tensorflow pandas numpy requests python-dotenv google-generativeai openai scikit-learn yfinance stable-baselines3 gym shimmy
       - name: Run OmniTrades
         env:
           BINANCE_TESTNET_API_KEY: ${{ secrets.BINANCE_TESTNET_API_KEY }}
