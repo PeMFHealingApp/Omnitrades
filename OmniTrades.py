@@ -45,7 +45,7 @@ STOP_LOSS = config['trading']['stop_loss']
 MAX_TRADES_PER_DAY = config['trading']['max_trades_per_day']
 NEWS_SOURCE = (config['sentiment']['news_source']
               .replace('YOUR_NEWS_API_KEY', os.getenv('NEWS_API_KEY', '')))
-NEWS_LIMIT = int(config['sentiment']['news_limit']
+NEWS_LIMIT = int(config['sentiment']['news_limit'])
 GEMINI_MODEL = config['sentiment']['gemini_model']
 OPENAI_MODEL = config['sentiment']['openai_model']
 LOG_FILE = config['general']['log_file']
