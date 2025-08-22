@@ -17,7 +17,7 @@ jobs:
         run: |
           cat OmniTrades.py  # Output full script
           grep SENTIMENT_SELL OmniTrades.py  # Check for correct variable usage
-          grep SENTIMENT_SELL_THRESHOLD OmniTrades.py || echo "SENTIMENT_SELL_THRESHOLD not found"
+          grep -n "sentiment_score < SENTIMENT_SELL_THRESHOLD" OmniTrades.py || echo "SENTIMENT_SELL_THRESHOLD not found in trading logic"
       - name: Lint code
         run: |
           pip install flake8
@@ -36,6 +36,7 @@ jobs:
           BINANCE_TESTNET_API_SECRET: ${{ secrets.BINANCE_TESTNET_API_SECRET }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
         run: timeout 3600 python OmniTrades.py || echo "Script terminated after 1 hour"
       - name: Commit logs
         run: |
