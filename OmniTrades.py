@@ -40,8 +40,11 @@ BATCH_SIZE = config['model']['batch_size']
 
 QUANTITY_BASE = config['trading']['quantity']
 PRICE_THRESHOLD = config['trading']['price_threshold']
-SENTIMENT_BUY_THRESHOLD = config['trading']['sentiment_buy_threshold']
-SENTIMENT_SELL_THRESHOLD = config['trading']['sentiment_sell_threshold']
+# Load sentiment thresholds with safe fallbacks for legacy configs
+SENTIMENT_BUY_THRESHOLD = config['trading'].get('sentiment_buy_threshold',
+                                               config['trading'].get('sentiment_buy', 0.7))
+SENTIMENT_SELL_THRESHOLD = config['trading'].get('sentiment_sell_threshold',
+                                                config['trading'].get('sentiment_sell', 0.3))
 TRADE_INTERVAL = config['trading']['trade_interval']
 INITIAL_CAPITAL = config['trading']['initial_capital']
 FEE_RATE = config['trading']['fee_rate']
@@ -386,7 +389,7 @@ while True:
 
     # Trading logic
     action = "hold"
-    if predicted_price > current_price * (1 + PRICE_THRESHOLD) and sentiment_score > SENTIMENT_BUY_THRESHOLD:
+    if predicted_price > current_price * (1 + PRICE_THRESHOLD) and sentiment_score > SENTIMENT_BUY:
         try:
             trade_client.order_market_buy(symbol=SYMBOL, quantity=quantity)
         except Exception as e:
@@ -396,7 +399,7 @@ while True:
         open_positions.append({'buy_price': current_price, 'quantity': quantity})
         daily_trade_count += 1
         print(f"Buy {quantity} at {current_price}, Pred: {predicted_price}, Sentiment: {sentiment_score}")
-    elif predicted_price < current_price * (1 - PRICE_THRESHOLD) and sentiment_score < SENTIMENT_SELL_THRESHOLD:
+    elif predicted_price < current_price * (1 - PRICE_THRESHOLD) and sentiment_score < SENTIMENT_SELL:
         try:
             trade_client.order_market_sell(symbol=SYMBOL, quantity=quantity)
         except Exception as e:
