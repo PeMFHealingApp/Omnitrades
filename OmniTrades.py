@@ -13,7 +13,7 @@ import openai
 import time
 from datetime import datetime
 import yfinance as yf
-import gymnasium as gym  # Updated from import gym
+import gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 
@@ -349,7 +349,7 @@ while True:
     # RL action
     action, _states = model_rl.predict(observation, deterministic=True)
     observation, reward, done, info = env.step(action)
-    reward = daily_earnings if daily_earnings else 0
+    reward = last_daily_earnings if last_daily_earnings else 0  # Fixed to use last_daily_earnings
 
     # Risk-based quantity
     quantity = max(QUANTITY_BASE, (current_capital * RISK_PER_TRADE) / current_price)
