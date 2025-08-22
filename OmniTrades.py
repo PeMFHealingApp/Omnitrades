@@ -133,7 +133,7 @@ if scaled_data is None or scaler is None:
 X_train, y_train = create_dataset(scaled_data, TIME_STEP)
 X_train = np.reshape(X_train, (X_train.shape[0], TIME_STEP, 3))
 
-model = mareSequential()
+model = Sequential()
 model.add(Input(shape=(TIME_STEP, 3)))
 model.add(GRU(LSTM_UNITS, return_sequences=True))
 model.add(GRU(LSTM_UNITS))
