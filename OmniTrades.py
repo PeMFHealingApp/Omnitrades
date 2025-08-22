@@ -58,14 +58,10 @@ trade_client = Client(os.getenv('BINANCE_TESTNET_API_KEY'), os.getenv('BINANCE_T
 # AI-generated historical data
 def get_historical_data():
     try:
-        # Generate 3 years of daily data (1095 days) from Jan 1, 2022
         dates = pd.date_range(start=START_DATE, periods=DATA_LIMIT, freq='D')
-        # Base price trend from $46,000 (Jan 2022) to $113,000 (Aug 2025)
         base_prices = np.linspace(46000.0, 113000.0, DATA_LIMIT)
-        # Add volatility (5% daily std, historical average)
         volatility = np.random.normal(0, 0.05, DATA_LIMIT)
         prices = base_prices * (1 + volatility)
-        # Ensure realistic bounds ($40,000 - $120,000)
         prices = np.clip(prices, 40000.0, 120000.0)
         data = pd.DataFrame({'timestamp': dates, 'close': prices})
         data['open'] = data['close'].shift(1).fillna(data['close'])
@@ -81,12 +77,9 @@ def get_historical_data():
 # AI-generated current price
 def get_current_price():
     try:
-        # Base price from AI trend (e.g., $113,000 as of Aug 21, 2025)
         base_price = 113000.0
-        # Simulate volatility (5% daily std)
         volatility = np.random.normal(0, 0.05)
         ai_price = base_price * (1 + volatility)
-        # Ensure realistic bounds
         ai_price = max(100000.0, min(120000.0, ai_price))
         print(f"AI-generated current price: ${ai_price:.2f} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         return ai_price
@@ -107,7 +100,7 @@ def get_global_factors():
 def get_x_sentiment(query="bitcoin price sentiment"):
     return 0.6
 
-# Prepare scaled data for prediction
+# Prepare scaled data
 def prepare_scaled_data():
     data = get_historical_data()
     if data.empty:
