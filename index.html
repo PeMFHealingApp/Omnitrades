@@ -55,7 +55,7 @@
                </thead>
                <tbody></tbody>
              </table>
-             <p id="gainLossNote" class="info">Note: 404 indicates no trade/metrics data. Run the workflow or check <a href="https://github.com/PeMFHealingApp/Omnitrades/actions" target="_blank">logs</a> for issues (e.g., no trades, API errors).</p>
+             <p id="gainLossNote" class="info">Note: No trade/metrics data yet. Run the workflow or check <a href="https://github.com/PeMFHealingApp/Omnitrades/actions" target="_blank">logs</a> for real-time updates.</p>
            </div>
          </div>
          <div class="card">
@@ -67,11 +67,13 @@
            <p class="info">Status: Paper Trading on Binance Testnet ($100K virtual capital)</p>
            <p class="info">Goal: $1,000/day for 30 days (Aug 21 - Sep 21, 2025)</p>
            <p class="info">Auto-Correction: Adjusts thresholds if daily earnings < $1,000</p>
-           <p class="info">Warning: Simulation includes 0.1% fees; no live trading yet. Contact support for issues.</p>
+           <p class="info">Warning: Uses real-time BTC pricing; no live trading yet. Contact support for issues.</p>
          </div>
        </div>
 
        <script>
+         let earningsChart = null; // Store chart instance
+
          async function fetchData() {
            try {
              const tradeResponse = await fetch('https://raw.githubusercontent.com/PeMFHealingApp/Omnitrades/main/trades.csv');
@@ -87,7 +89,7 @@
              if (!metricsResponse.ok) throw new Error(`Metrics data fetch failed: ${metricsResponse.status} ${metricsResponse.statusText}`);
              let metricsText = await metricsResponse.text();
              if (metricsResponse.status === 404) {
-               document.getElementById('gainLossNote').textContent = 'Note: 404 indicates no trade/metrics data. Run the workflow or check <a href="https://github.com/PeMFHealingApp/Omnitrades/actions" target="_blank">logs</a> for issues (e.g., no trades, API errors).';
+               document.getElementById('gainLossNote').textContent = 'Note: No trade/metrics data yet. Run the workflow or check <a href="https://github.com/PeMFHealingApp/Omnitrades/actions" target="_blank">logs</a> for real-time updates.';
                metricsText = 'date,daily_earnings,total_pnl,win_rate,num_trades,avg_trade_profit,sharpe_ratio,max_drawdown,portfolio_value\n';
              }
              const metricsLines = metricsText.split('\n').filter(line => line.trim());
@@ -129,6 +131,11 @@
              document.getElementById('numTrades').textContent = `Number of Trades: ${latestMetrics.num_trades}`;
              document.getElementById('historicalRange').textContent = `Historical Data: Jan 1, 2022 - ${new Date().toLocaleDateString()}`;
 
+             // Destroy existing chart before creating a new one
+             if (earningsChart) {
+               earningsChart.destroy();
+             }
+
              // Daily Gain/Loss Table
              const tableBody = document.querySelector('#gainLossTable tbody');
              tableBody.innerHTML = '';
@@ -145,7 +152,7 @@
              }
 
              const ctx = document.getElementById('earningsChart').getContext('2d');
-             new Chart(ctx, {
+             earningsChart = new Chart(ctx, {
                type: 'line',
                data: {
                  labels: metrics.map(m => m.date),
