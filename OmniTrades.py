@@ -349,7 +349,7 @@ while True:
     # RL action
     action, _states = model_rl.predict(observation, deterministic=True)
     observation, reward, done, info = env.step(action)
-    reward = last_daily_earnings if last_daily_earnings else 0  # Fixed to use last_daily_earnings
+    reward = last_daily_earnings if last_daily_earnings is not None else 0  # Ensure reward is defined
 
     # Risk-based quantity
     quantity = max(QUANTITY_BASE, (current_capital * RISK_PER_TRADE) / current_price)
