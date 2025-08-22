@@ -90,10 +90,11 @@ def get_current_price():
 # Fetch global factors (e.g., VIX)
 def get_global_factors():
     try:
-        vix_data = yf.download('^VIX', period='1d')
+        vix_data = yf.download('^VIX', period='1d', progress=False)
         vix = vix_data['Close'].iloc[-1] if not vix_data.empty else 0.0
         return {'vix': vix}
-    except:
+    except Exception as e:
+        print(f"Error fetching VIX: {e}")
         return {'vix': 0.0}
 
 # Fetch X sentiment (placeholder)
@@ -137,16 +138,8 @@ model.add(Dropout(0.2))
 model.add(Dense(1))
 model.compile(optimizer='adam', loss='mean_squared_error')
 
-# Hyperparameter tuning
-param_grid = {
-    'lstm_units': [50, 100],
-    'epochs': [10, 20],
-    'batch_size': [32, 64]
-}
-tscv = TimeSeriesSplit(n_splits=5)
-grid_search = GridSearchCV(model, param_grid, cv=tscv, scoring='neg_mean_squared_error')
-grid_search.fit(X_train, y_train)
-model = grid_search.best_estimator_
+# Hyperparameter tuning (avoid GridSearchCV with Keras directly)
+model.fit(X_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, verbose=1)
 
 # Ensemble with Random Forest
 rf_model = RandomForestRegressor(n_estimators=100)
