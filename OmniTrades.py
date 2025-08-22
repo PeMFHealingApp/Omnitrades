@@ -43,7 +43,7 @@ METRICS_INTERVAL = config['trading']['metrics_interval']
 RISK_PER_TRADE = config['trading']['risk_per_trade']
 STOP_LOSS = config['trading']['stop_loss']
 MAX_TRADES_PER_DAY = config['trading']['max_trades_per_day']
-NEWS_SOURCE = config['sentiment']['news_source']
+NEWS_SOURCE = config['sentiment']['news_source'].replace('YOUR_NEWS_API_KEY', os.getenv('NEWS_API_KEY', ''))
 NEWS_LIMIT = int(config['sentiment']['news_limit'])
 GEMINI_MODEL = config['sentiment']['gemini_model']
 OPENAI_MODEL = config['sentiment']['openai_model']
@@ -218,7 +218,8 @@ def get_recent_news():
         r.raise_for_status()
         data = r.json().get('data', [])[:NEWS_LIMIT]
         return [item.get('title', '') for item in data] or ["No news."]
-    except Exception:
+    except Exception as e:
+        print(f"Error fetching news: {e}")
         return ["No news."]
 
 
