@@ -43,7 +43,9 @@ METRICS_INTERVAL = config['trading']['metrics_interval']
 RISK_PER_TRADE = config['trading']['risk_per_trade']
 STOP_LOSS = config['trading']['stop_loss']
 MAX_TRADES_PER_DAY = config['trading']['max_trades_per_day']
-NEWS_SOURCE = config['sentiment']['news_source'].replace('YOUR_NEWS_API_KEY', os.getenv('NEWS_API_KEY', ''))
+NEWS_SOURCE = config['sentiment']['news_source'].replace(
+    'YOUR_NEWS_API_KEY', os.getenv('NEWS_API_KEY', '')
+)
 NEWS_LIMIT = int(config['sentiment']['news_limit'])
 GEMINI_MODEL = config['sentiment']['gemini_model']
 OPENAI_MODEL = config['sentiment']['openai_model']
@@ -107,8 +109,9 @@ def get_current_price():
 
 def get_global_factors():
     try:
-        vix_data = yf.download('^VIX', period='1d', progress=False,
-                               auto_adjust=False)
+        vix_data = yf.download(
+            '^VIX', period='1d', progress=False, auto_adjust=False
+        )
         vix = float(vix_data['Close'].iloc[-1]) if not vix_data.empty else 20.0
         return {'vix': vix}
     except Exception as e:
