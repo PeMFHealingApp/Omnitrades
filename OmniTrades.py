@@ -2,23 +2,17 @@ import os
 import json
 import time
 from datetime import datetime
-
 import numpy as np
 import pandas as pd
 import requests
 import yfinance as yf
-
 from binance.client import Client
-
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.ensemble import RandomForestRegressor
-
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import GRU, Dense, Dropout, Input
-
 import google.generativeai as genai
 import openai
-
 import gymnasium as gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
@@ -32,16 +26,14 @@ SYMBOL = config['data']['symbol']
 INTERVAL = '1m'
 START_DATE = config['data']['start_date']
 DATA_LIMIT = config['data']['data_limit']
-
 TIME_STEP = config['model']['time_step']
 LSTM_UNITS = config['model']['lstm_units']
 EPOCHS = config['model']['epochs']
 BATCH_SIZE = config['model']['batch_size']
-
 QUANTITY_BASE = config['trading']['quantity']
 PRICE_THRESHOLD = config['trading']['price_threshold']
-SENTIMENT_BUY_THRESHOLD = config['trading']['sentiment_buy_threshold']
-SENTIMENT_SELL_THRESHOLD = config['trading']['sentiment_sell_threshold']
+SENTIMENT_BUY = config['trading']['sentiment_buy_threshold']
+SENTIMENT_SELL = config['trading']['sentiment_sell_threshold']
 TRADE_INTERVAL = config['trading']['trade_interval']
 INITIAL_CAPITAL = config['trading']['initial_capital']
 FEE_RATE = config['trading']['fee_rate']
@@ -49,19 +41,17 @@ METRICS_INTERVAL = config['trading']['metrics_interval']
 RISK_PER_TRADE = config['trading']['risk_per_trade']
 STOP_LOSS = config['trading']['stop_loss']
 MAX_TRADES_PER_DAY = config['trading']['max_trades_per_day']
-
 NEWS_SOURCE = config['sentiment']['news_source']
 NEWS_LIMIT = int(config['sentiment']['news_limit'])
 GEMINI_MODEL = config['sentiment']['gemini_model']
 OPENAI_MODEL = config['sentiment']['openai_model']
-
 LOG_FILE = config['general']['log_file']
 DAILY_METRICS_FILE = config['general']['daily_metrics_file']
 TESTNET = config['general']['testnet']
 
 # Backward compatible aliases to prevent NameError if old names linger anywhere
-SENTIMENT_BUY = SENTIMENT_BUY_THRESHOLD
-SENTIMENT_SELL = SENTIMENT_SELL_THRESHOLD
+SENTIMENT_BUY_THRESHOLD = SENTIMENT_BUY
+SENTIMENT_SELL_THRESHOLD = SENTIMENT_SELL
 
 # API setup
 genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
@@ -71,7 +61,6 @@ trade_client = Client(os.getenv('BINANCE_TESTNET_API_KEY'),
                       testnet=TESTNET)
 
 # ---------- Data generation and utilities ----------
-
 def get_historical_data():
     try:
         dates = pd.date_range(start=START_DATE, periods=DATA_LIMIT, freq='D')
@@ -132,11 +121,10 @@ def create_dataset(dataset, time_step):
     X, Y = [], []
     for i in range(len(dataset) - time_step - 1):
         X.append(dataset[i:(i + time_step), :])
-        Y.append(dataset[i + time_step, 0])  # close column
+        Y.append(dataset[i + time_step, 0]) # close column
     return np.array(X), np.array(Y)
 
 # ---------- Train models ----------
-
 scaled_data, scaler = prepare_scaled_data()
 if scaled_data is None or scaler is None:
     print("Failed to prepare data for training. Exiting.")
@@ -165,7 +153,6 @@ def predict_next_price():
     gru_pred = model.predict(np.reshape(last_window, (1, TIME_STEP, 3)), verbose=0)[0][0]
     rf_pred = rf_model.predict(last_window.reshape(1, -1))[0]
     pred_scaled = (gru_pred + rf_pred) / 2.0
-
     # Correct inverse for MinMaxScaler: X = (X_scaled - min_) / scale_
     price_scale = sc.scale_[0]
     price_min = sc.min_[0]
@@ -173,7 +160,6 @@ def predict_next_price():
     return float(inverse_pred)
 
 # ---------- Sentiment ----------
-
 def get_gemini_sentiment(news_texts):
     try:
         gmodel = genai.GenerativeModel(GEMINI_MODEL)
@@ -205,7 +191,6 @@ def get_recent_news():
         return ["No news."]
 
 # ---------- Metrics ----------
-
 def calculate_metrics(trade_log, current_price, initial_capital):
     if not trade_log:
         return {
@@ -218,12 +203,10 @@ def calculate_metrics(trade_log, current_price, initial_capital):
             'max_drawdown': 0.0,
             'portfolio_value': initial_capital
         }
-
     df = pd.DataFrame(trade_log)
     df['time'] = pd.to_datetime(df['time'])
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     daily_trades = df[df['time'] >= today]
-
     # Daily earnings
     daily_earnings = 0.0
     buy_trades = daily_trades[daily_trades['action'] == 'buy'].iloc[::-1].to_dict('records')
@@ -235,7 +218,6 @@ def calculate_metrics(trade_log, current_price, initial_capital):
                 daily_earnings += profit
                 buy_trades.remove(buy)
                 break
-
     # Total P&L
     total_pnl = 0.0
     all_buy_trades = df[df['action'] == 'buy'].iloc[::-1].to_dict('records')
@@ -247,7 +229,6 @@ def calculate_metrics(trade_log, current_price, initial_capital):
                 total_pnl += profit
                 all_buy_trades.remove(buy)
                 break
-
     # Win rate and avg profit
     profits = []
     all_buy_trades = df[df['action'] == 'buy'].iloc[::-1].to_dict('records')
@@ -261,7 +242,6 @@ def calculate_metrics(trade_log, current_price, initial_capital):
     win_rate = len([p for p in profits if p > 0]) / len(profits) if profits else 0.0
     num_trades = int(len(df[df['action'].isin(['buy', 'sell'])]))
     avg_trade_profit = float(np.mean(profits)) if profits else 0.0
-
     # Simple portfolio and drawdown
     portfolio_values = [INITIAL_CAPITAL]
     current_cash = INITIAL_CAPITAL
@@ -276,11 +256,9 @@ def calculate_metrics(trade_log, current_price, initial_capital):
         portfolio_values.append(current_cash + sum(t['quantity'] * current_price for t in trades_open))
     max_drawdown = max(0, max(portfolio_values) - min(portfolio_values))
     portfolio_value = current_cash + sum(t['quantity'] * current_price for t in trades_open)
-
     # Sharpe placeholder to avoid divide by zero with small logs
     daily_returns = np.diff(portfolio_values) if len(portfolio_values) > 1 else np.array([0.0])
     sharpe_ratio = float(np.mean(daily_returns) / np.std(daily_returns)) if np.std(daily_returns) != 0 else 0.0
-
     return {
         'daily_earnings': float(daily_earnings),
         'total_pnl': float(total_pnl),
@@ -293,18 +271,15 @@ def calculate_metrics(trade_log, current_price, initial_capital):
     }
 
 def adjust_parameters(daily_earnings):
-    global PRICE_THRESHOLD, SENTIMENT_BUY_THRESHOLD, SENTIMENT_SELL_THRESHOLD
+    global PRICE_THRESHOLD, SENTIMENT_BUY, SENTIMENT_SELL
     MIN_EARNINGS = 1000.0
     if daily_earnings < MIN_EARNINGS:
         PRICE_THRESHOLD = max(0.0001, PRICE_THRESHOLD * 0.9)
-        SENTIMENT_BUY_THRESHOLD = max(0.3, SENTIMENT_BUY_THRESHOLD - 0.05)
-        SENTIMENT_SELL_THRESHOLD = min(0.3, SENTIMENT_SELL_THRESHOLD + 0.05)
-        print(
-            f"Auto-correction applied: Price Threshold={PRICE_THRESHOLD}, Buy Threshold={SENTIMENT_BUY_THRESHOLD}, Sell Threshold={SENTIMENT_SELL_THRESHOLD}"
-        )
+        SENTIMENT_BUY = max(0.3, SENTIMENT_BUY - 0.05)
+        SENTIMENT_SELL = min(0.3, SENTIMENT_SELL + 0.05)
+        print(f"Auto-correction applied: Price Threshold={PRICE_THRESHOLD}, Buy Threshold={SENTIMENT_BUY}, Sell Threshold={SENTIMENT_SELL}")
 
 # ---------- Trading loop setup ----------
-
 trade_log = []
 last_metrics_time = time.time()
 current_capital = INITIAL_CAPITAL
@@ -328,7 +303,6 @@ if not os.path.exists(DAILY_METRICS_FILE):
     print(f"Initialized empty {DAILY_METRICS_FILE}")
 
 print("Starting trading loop with capital:", current_capital)
-
 last_save_time = time.time()
 SAVE_INTERVAL = 3600
 
@@ -376,14 +350,14 @@ while True:
     # RL action placeholder
     action_vec, _states = model_rl.predict(observation, deterministic=True)
     observation, rewards, dones, infos = env.step(action_vec)
-    _ = last_daily_earnings  # placeholder to show feedback is available
+    _ = last_daily_earnings # placeholder to show feedback is available
 
     # Risk-based quantity
     quantity = max(QUANTITY_BASE, (current_capital * RISK_PER_TRADE) / current_price)
 
     # Trading logic
     action = "hold"
-    if predicted_price > current_price * (1 + PRICE_THRESHOLD) and sentiment_score > SENTIMENT_BUY_THRESHOLD:
+    if predicted_price > current_price * (1 + PRICE_THRESHOLD) and sentiment_score > SENTIMENT_BUY:
         try:
             trade_client.order_market_buy(symbol=SYMBOL, quantity=quantity)
         except Exception as e:
@@ -393,7 +367,7 @@ while True:
         open_positions.append({'buy_price': current_price, 'quantity': quantity})
         daily_trade_count += 1
         print(f"Buy {quantity} at {current_price}, Pred: {predicted_price}, Sentiment: {sentiment_score}")
-    elif predicted_price < current_price * (1 - PRICE_THRESHOLD) and sentiment_score < SENTIMENT_SELL_THRESHOLD:
+    elif predicted_price < current_price * (1 - PRICE_THRESHOLD) and sentiment_score < SENTIMENT_SELL:
         try:
             trade_client.order_market_sell(symbol=SYMBOL, quantity=quantity)
         except Exception as e:
