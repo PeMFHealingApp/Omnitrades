@@ -40,8 +40,8 @@ BATCH_SIZE = config['model']['batch_size']
 
 QUANTITY_BASE = config['trading']['quantity']
 PRICE_THRESHOLD = config['trading']['price_threshold']
-SENTIMENT_BUY = config['trading']['sentiment_buy_threshold']
-SENTIMENT_SELL = config['trading']['sentiment_sell_threshold']
+SENTIMENT_BUY_THRESHOLD = config['trading']['sentiment_buy_threshold']
+SENTIMENT_SELL_THRESHOLD = config['trading']['sentiment_sell_threshold']
 TRADE_INTERVAL = config['trading']['trade_interval']
 INITIAL_CAPITAL = config['trading']['initial_capital']
 FEE_RATE = config['trading']['fee_rate']
@@ -60,8 +60,8 @@ DAILY_METRICS_FILE = config['general']['daily_metrics_file']
 TESTNET = config['general']['testnet']
 
 # Backward compatible aliases to prevent NameError if old names linger anywhere
-SENTIMENT_BUY_THRESHOLD = SENTIMENT_BUY
-SENTIMENT_SELL_THRESHOLD = SENTIMENT_SELL
+SENTIMENT_BUY = SENTIMENT_BUY_THRESHOLD
+SENTIMENT_SELL = SENTIMENT_SELL_THRESHOLD
 
 # API setup
 genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
@@ -293,13 +293,18 @@ def calculate_metrics(trade_log, current_price, initial_capital):
     }
 
 def adjust_parameters(daily_earnings):
-    global PRICE_THRESHOLD, SENTIMENT_BUY, SENTIMENT_SELL
+    global PRICE_THRESHOLD, SENTIMENT_BUY_THRESHOLD, SENTIMENT_SELL_THRESHOLD, SENTIMENT_BUY, SENTIMENT_SELL
     MIN_EARNINGS = 1000.0
     if daily_earnings < MIN_EARNINGS:
         PRICE_THRESHOLD = max(0.0001, PRICE_THRESHOLD * 0.9)
-        SENTIMENT_BUY = max(0.3, SENTIMENT_BUY - 0.05)
-        SENTIMENT_SELL = min(0.3, SENTIMENT_SELL + 0.05)
-        print(f"Auto-correction applied: Price Threshold={PRICE_THRESHOLD}, Buy Threshold={SENTIMENT_BUY}, Sell Threshold={SENTIMENT_SELL}")
+        SENTIMENT_BUY_THRESHOLD = max(0.3, SENTIMENT_BUY_THRESHOLD - 0.05)
+        SENTIMENT_SELL_THRESHOLD = min(0.3, SENTIMENT_SELL_THRESHOLD + 0.05)
+        # Keep backward-compatible aliases in sync
+        SENTIMENT_BUY = SENTIMENT_BUY_THRESHOLD
+        SENTIMENT_SELL = SENTIMENT_SELL_THRESHOLD
+        print(
+            f"Auto-correction applied: Price Threshold={PRICE_THRESHOLD}, Buy Threshold={SENTIMENT_BUY_THRESHOLD}, Sell Threshold={SENTIMENT_SELL_THRESHOLD}"
+        )
 
 # ---------- Trading loop setup ----------
 
@@ -381,7 +386,7 @@ while True:
 
     # Trading logic
     action = "hold"
-    if predicted_price > current_price * (1 + PRICE_THRESHOLD) and sentiment_score > SENTIMENT_BUY:
+    if predicted_price > current_price * (1 + PRICE_THRESHOLD) and sentiment_score > SENTIMENT_BUY_THRESHOLD:
         try:
             trade_client.order_market_buy(symbol=SYMBOL, quantity=quantity)
         except Exception as e:
@@ -391,7 +396,7 @@ while True:
         open_positions.append({'buy_price': current_price, 'quantity': quantity})
         daily_trade_count += 1
         print(f"Buy {quantity} at {current_price}, Pred: {predicted_price}, Sentiment: {sentiment_score}")
-    elif predicted_price < current_price * (1 - PRICE_THRESHOLD) and sentiment_score < SENTIMENT_SELL:
+    elif predicted_price < current_price * (1 - PRICE_THRESHOLD) and sentiment_score < SENTIMENT_SELL_THRESHOLD:
         try:
             trade_client.order_market_sell(symbol=SYMBOL, quantity=quantity)
         except Exception as e:
